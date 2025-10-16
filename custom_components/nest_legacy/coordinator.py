@@ -1,0 +1,464 @@
+"""Data update coordinator for the Nest integration."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+import time
+from typing import Any
+
+from aiohttp import ClientError
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .const import (
+    CONF_ACCESS_TOKEN,
+    CONF_ACCOUNT_TYPE,
+    CONF_COOKIES,
+    CONF_FIELD_TEST,
+    CONF_ISSUE_TOKEN,
+    DOMAIN,
+)
+from .events import NEST_LEGACY_EVENT
+from .pynest.client import NestClient
+from .pynest.exceptions import (
+    BadCredentialsException,
+    EmptyResponseException,
+    NotAuthenticatedException,
+    PynestException,
+)
+from .pynest.models import NestCamera, NestDevice, NestLock
+from .pynest.parser import NestParser
+
+_LOGGER = logging.getLogger(__name__)
+
+EVENT_POLL_INTERVAL = 5  # seconds
+MAX_EVENT_AGE_SECONDS = 60
+MAX_BACKOFF_SECONDS = 60
+INITIAL_BACKOFF_SECONDS = 0.1
+
+
+type NestConfigEntry = ConfigEntry[NestCoordinator]
+
+
+class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
+    """Manages fetching and processing Nest data."""
+
+    config_entry: NestConfigEntry
+    client: NestClient
+    parser: NestParser
+
+    def __init__(self, hass: HomeAssistant, entry: NestConfigEntry) -> None:
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=None,  # This coordinator is push-based (except for events)
+        )
+        self.config_entry = entry
+        self.client = NestClient(
+            async_create_clientsession(hass), entry.data.get(CONF_FIELD_TEST, False)
+        )
+        self.parser = NestParser()
+        self._subscribe_task: asyncio.Task | None = None
+        self._observe_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task | None = None
+        self._raw_data: dict[str, Any] = {}
+        self._last_event_ids: dict[str, str] = {}
+        self._last_event_poll_success_time: float | None = None
+        self.first_protobuf_update_received = asyncio.Event()
+
+    async def async_reauthenticate(self) -> None:
+        """(Re-)authenticate with the Nest API."""
+        data = self.config_entry.data
+        account_type = data.get(CONF_ACCOUNT_TYPE)
+        if account_type == "google":
+            await self.client.async_authenticate_with_google_credentials(
+                data[CONF_ISSUE_TOKEN], data[CONF_COOKIES]
+            )
+        elif account_type == "nest":
+            await self.client.async_authenticate_with_nest_token(
+                data[CONF_ACCESS_TOKEN]
+            )
+        else:
+            raise HomeAssistantError(
+                f"Unsupported account type in config entry: {account_type}"
+            )
+
+    async def async_initialize(self) -> None:
+        """Initialize the connection and fetch initial data."""
+        try:
+            await self.async_reauthenticate()
+            self._raw_data = await self.client.async_get_first_data()
+            parsed_data = self.parser.parse_all(self._raw_data)
+            self.data = {
+                **{device.serial_number: device for device in parsed_data.devices},
+            }
+
+            # Fetch detailed properties for any cameras found in the initial data
+            camera_property_tasks = [
+                self._async_update_camera_properties(device)
+                for device in self.data.values()
+                if isinstance(device, NestCamera)
+            ]
+            if camera_property_tasks:
+                await asyncio.gather(*camera_property_tasks)
+                # Re-parse data after fetching additional properties
+                parsed_data = self.parser.parse_all(self._raw_data)
+                self.data = {
+                    **{device.serial_number: device for device in parsed_data.devices},
+                }
+
+        except BadCredentialsException as err:
+            raise ConfigEntryAuthFailed from err
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.error("Error communicating with Nest API: %r", err)
+            raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+    async def async_set_device_data(
+        self, device: NestDevice, data: dict[str, Any]
+    ) -> None:
+        """Set device data and handle exceptions."""
+        try:
+            await self.client.async_set_device_data(device, data)
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.error(
+                "Error setting data for Nest device %s %s (%s) with payload %s: %r",
+                device.location,
+                device.name,
+                device.serial_number,
+                data,
+                err,
+            )
+            raise HomeAssistantError from err
+
+    def async_start_subscriber(self) -> None:
+        """Start the background task to listen for updates."""
+        if self._subscribe_task is None:
+            self._subscribe_task = self.config_entry.async_create_background_task(
+                self.hass, self._async_subscribe_for_updates(), "nest-subscribe-rest"
+            )
+            self._observe_task = self.config_entry.async_create_background_task(
+                self.hass, self._async_observe_for_updates(), "nest-observe-protobuf"
+            )
+            self._poll_task = self.config_entry.async_create_background_task(
+                self.hass, self._async_poll_camera_events(), "nest-poll-events"
+            )
+
+    def async_stop_subscriber(self) -> None:
+        """Stop the background task."""
+        if self._subscribe_task:
+            self._subscribe_task.cancel()
+            self._subscribe_task = None
+        if self._observe_task:
+            self._observe_task.cancel()
+            self._observe_task = None
+        if self._poll_task:
+            self._poll_task.cancel()
+            self._poll_task = None
+
+    def _debug_log_diff(
+        self, key: str, old_val: dict[Any, Any], new_val: dict[Any, Any]
+    ) -> None:
+        """Log the differences between two dictionaries for debugging."""
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+        _LOGGER.debug("Received update with changes for %s:", key)
+        old_keys = set(old_val.keys())
+        new_keys = set(new_val.keys())
+        for k in sorted(new_keys - old_keys):
+            _LOGGER.debug("  + %s: %s", k, new_val[k])
+        for k in sorted(old_keys - new_keys):
+            _LOGGER.debug("  - %s: %s", k, old_val[k])
+        for k in sorted(old_keys & new_keys):
+            if old_val[k] != new_val[k]:
+                _LOGGER.debug("  ~ %s: %s -> %s", k, old_val[k], new_val[k])
+
+    async def _async_subscribe_for_updates(self) -> None:
+        """Listen for data updates from the Nest API."""
+        failures = 0
+        while True:
+            try:
+                if self.client.is_expired():
+                    _LOGGER.debug("Re-authenticating Nest session")
+                    await self.async_reauthenticate()
+
+                updates = await self.client.async_subscribe_for_updates()
+                failures = 0  # Reset on success
+
+                if not updates:
+                    continue
+
+                camera_property_tasks = []
+                for key, value in updates.items():
+                    old_value = self._raw_data.get(key)
+                    if old_value == value:
+                        _LOGGER.debug("Received update with no changes for %s", key)
+                        continue
+                    if (
+                        old_value
+                        and isinstance(old_value, dict)
+                        and isinstance(value, dict)
+                    ):
+                        self._debug_log_diff(key, old_value, value)
+                    else:
+                        _LOGGER.debug("Received update for %s: %s", key, value)
+                    self._raw_data[key] = value
+
+                    # If this is a camera, also fetch its detailed properties
+                    if (serial := value.get("serial_number")) and isinstance(
+                        serial, str
+                    ):
+                        device = self.data.get(serial)
+                        if isinstance(device, NestCamera):
+                            camera_property_tasks.append(
+                                self._async_update_camera_properties(device)
+                            )
+
+                if camera_property_tasks:
+                    await asyncio.gather(*camera_property_tasks)
+
+                parsed_data = self.parser.parse_all(self._raw_data)
+                self.data = {
+                    **{device.serial_number: device for device in parsed_data.devices},
+                }
+                self.async_set_updated_data(self.data)
+
+            except NotAuthenticatedException:
+                _LOGGER.debug("Subscriber not authenticated. Re-authenticating")
+                await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
+                continue
+            except BadCredentialsException:
+                _LOGGER.error("Bad credentials, re-authentication required")
+                self.config_entry.async_start_reauth(self.hass)
+                self.async_stop_subscriber()
+                return
+            except Exception as err:
+                delay = min(
+                    MAX_BACKOFF_SECONDS,
+                    INITIAL_BACKOFF_SECONDS * (2**failures),
+                )
+                failures += 1
+                if isinstance(err, (TimeoutError, EmptyResponseException)):
+                    _LOGGER.debug(
+                        "Subscriber connection error: %r. Retrying in %ds", err, delay
+                    )
+                elif isinstance(err, (ClientError, PynestException)):
+                    _LOGGER.warning(
+                        "Subscriber connection error: %r. Retrying in %ds", err, delay
+                    )
+                else:
+                    _LOGGER.exception(
+                        "Unknown exception in subscriber. Retrying in %ds", delay
+                    )
+                await asyncio.sleep(delay)
+                continue
+
+    async def _async_observe_for_updates(self) -> None:
+        """Listen for protobuf data updates from the Nest API."""
+        failures = 0
+        while True:
+            try:
+                if self.client.is_expired():
+                    _LOGGER.debug("Re-authenticating Nest session for observe")
+                    await self.async_reauthenticate()
+
+                async for updates in self.client.async_observe_for_updates():
+                    failures = 0  # Reset on success
+
+                    # Deep merge protobuf updates into raw_data
+                    for resource_id, traits in updates.items():
+                        if resource_id not in self._raw_data:
+                            self._raw_data[resource_id] = {}
+                        for trait_label, trait_data in traits.items():
+                            if _LOGGER.isEnabledFor(logging.DEBUG):
+                                old_trait_data = self._raw_data[resource_id].get(
+                                    trait_label
+                                )
+                                if old_trait_data != trait_data:
+                                    _LOGGER.debug(
+                                        "Protobuf change for %s/%s: %s -> %s",
+                                        resource_id,
+                                        trait_label,
+                                        old_trait_data,
+                                        trait_data,
+                                    )
+                            self._raw_data[resource_id][trait_label] = trait_data
+
+                    parsed_data = self.parser.parse_all(self._raw_data)
+                    self.data = {
+                        **{
+                            device.serial_number: device
+                            for device in parsed_data.devices
+                        },
+                    }
+                    self.async_set_updated_data(self.data)
+
+                    # On first update, signal readiness and decide if we need to continue observing.
+                    if not self.first_protobuf_update_received.is_set():
+                        _LOGGER.debug("Received first protobuf update")
+                        self.first_protobuf_update_received.set()
+
+                        # If no locks were discovered in the first update, stop observing.
+                        if not any(
+                            isinstance(device, NestLock)
+                            for device in self.data.values()
+                        ):
+                            _LOGGER.debug(
+                                "No Nest Locks found in initial protobuf data; stopping observer task"
+                            )
+                            return  # Exit the while loop and terminate the task.
+
+            except NotAuthenticatedException:
+                _LOGGER.debug("Observer not authenticated. Re-authenticating")
+                await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
+                continue
+            except BadCredentialsException:
+                _LOGGER.error(
+                    "Bad credentials for observer, re-authentication required"
+                )
+                self.config_entry.async_start_reauth(self.hass)
+                self.async_stop_subscriber()
+                return
+            except Exception as err:
+                delay = min(
+                    MAX_BACKOFF_SECONDS,
+                    INITIAL_BACKOFF_SECONDS * (2**failures),
+                )
+                failures += 1
+                if isinstance(err, (ClientError, TimeoutError, PynestException)):
+                    _LOGGER.warning(
+                        "Observer connection error: %r. Retrying in %ds", err, delay
+                    )
+                else:
+                    _LOGGER.exception(
+                        "Unknown exception in observer. Retrying in %ds", delay
+                    )
+                await asyncio.sleep(delay)
+                continue
+
+    async def _async_poll_camera_events(self) -> None:
+        """Poll the camera cuepoint API for events."""
+        failures = 0
+        while True:
+            try:
+                # Determine the start time for the event query
+                last_success = self._last_event_poll_success_time or (
+                    time.time() - MAX_EVENT_AGE_SECONDS
+                )
+                # Use last success time with a buffer, but don't look back more than 60s
+                start_time = max(
+                    last_success - EVENT_POLL_INTERVAL,
+                    time.time() - MAX_EVENT_AGE_SECONDS,
+                )
+
+                # Gather all camera event tasks
+                tasks = [
+                    self._async_process_events_for_device(device, start_time)
+                    for device in self.data.values()
+                    if isinstance(device, NestCamera)
+                    and device.online
+                    and device.streaming_enabled
+                ]
+                if tasks:
+                    await asyncio.gather(*tasks)
+
+                self._last_event_poll_success_time = time.time()
+                failures = 0  # Reset on success
+            except Exception as err:
+                delay = min(
+                    MAX_BACKOFF_SECONDS,
+                    INITIAL_BACKOFF_SECONDS * (2**failures),
+                )
+                failures += 1
+                if isinstance(err, TimeoutError):
+                    _LOGGER.debug(
+                        "Error polling for events: %r. Retrying in %ds", err, delay
+                    )
+                elif isinstance(err, (ClientError, PynestException)):
+                    _LOGGER.warning(
+                        "Error polling for events: %r. Retrying in %ds", err, delay
+                    )
+                else:
+                    _LOGGER.exception(
+                        "Unknown error polling for events. Retrying in %ds", delay
+                    )
+                await asyncio.sleep(delay)
+
+            await asyncio.sleep(EVENT_POLL_INTERVAL)
+
+    async def _async_process_events_for_device(
+        self, device: NestCamera, start_time: float
+    ) -> None:
+        """Fetch and process events for a single camera."""
+        # Add jitter to spread out API calls
+        await asyncio.sleep(random.uniform(0, EVENT_POLL_INTERVAL - 1))
+
+        try:
+            events = await self.client.async_get_camera_events(
+                device, start_time=int(start_time)
+            )
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.warning(
+                "Error fetching events for camera %s %s: %r",
+                device.location,
+                device.name,
+                err,
+            )
+            return
+        if not events:
+            return
+
+        newest_event = max(events, key=lambda ev: ev["start_time"])
+        event_id = newest_event.get("id")
+        if not event_id:
+            return
+
+        if self._last_event_ids.get(device.serial_number) == event_id:
+            return
+
+        _LOGGER.debug(
+            "New event for %s %s: %s", device.location, device.name, newest_event
+        )
+        self._last_event_ids[device.serial_number] = event_id
+
+        self.hass.bus.async_fire(
+            NEST_LEGACY_EVENT,
+            {
+                "serial_number": device.serial_number,
+                "nest_event": newest_event,
+            },
+        )
+
+    async def _async_update_camera_properties(self, device: NestCamera) -> None:
+        """Update the detailed properties for a single camera."""
+        try:
+            properties = await self.client.async_get_camera_properties(device)
+            if not properties:
+                return
+            # Merge properties into the main device bucket
+            device_bucket = self._raw_data.get(device.object_key, {})
+            if "properties" not in device_bucket:
+                device_bucket["properties"] = {}
+            device_bucket["properties"].update(properties)
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.warning(
+                "Error fetching properties for camera %s %s: %r",
+                device.location,
+                device.name,
+                err,
+            )
+
+    async def _async_update_data(self) -> dict[str, NestDevice]:
+        """Update data via the coordinator.
+
+        This method is not used for polling but can be triggered manually.
+        For Nest, updates are push-based via the subscriber.
+        """
+        return self.data
