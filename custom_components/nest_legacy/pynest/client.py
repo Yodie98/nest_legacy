@@ -209,7 +209,7 @@ class NestClient:
             result = await response.json()
             if "error" in result:
                 raise BadCredentialsException(result.get("detail", result["error"]))
-            return GoogleAuthResponse(**result)
+            return GoogleAuthResponse.from_dict(result)
 
     async def _async_authenticate(self, access_token: str) -> NestSession:
         """Start a new Nest session with a Google access token."""

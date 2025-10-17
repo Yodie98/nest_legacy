@@ -318,6 +318,13 @@ class GoogleAuthResponse:
     expires_in: int
     id_token: str
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GoogleAuthResponse:
+        """Create an instance from a dict, ignoring unknown keys."""
+        known_fields = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+        return cls(**filtered_data)
+
 
 @dataclass
 class NestAuthClaims:
