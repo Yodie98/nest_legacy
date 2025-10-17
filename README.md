@@ -143,6 +143,43 @@ This integration would not be possible without the extensive research and work d
 - <https://github.com/n0rt0nthec4t/homebridge-nest-accfactory>
 - <https://github.com/iMicknl/ha-nest-protect>
 
+## Screenshots
+
+### Configuration
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/92bf01b3-98b6-4a01-9e6e-5e6e22dc1ca7" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/cae9c9ea-317e-4823-b7d0-744982d51ee4" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/5ad4ed27-85e2-4eca-b892-5c4f13f56aef" />
+
+### Nest Protect
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/e1e42e58-78be-4d26-b8aa-08a124703d58" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/571b9e65-c6c7-422c-8482-e3c8a3319992" />
+
+### Nest Camera
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/d353b7de-c538-4fa6-bb0c-736377cd8419" />
+
+### Nest Doorbell
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/eb2c978f-ba9c-4c75-a726-b5db7e2660ae" />
+
+### Nest Lock
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/c7e248b7-be6f-479f-9475-b70f67ea1939" />
+
+## Home
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/024763eb-bd52-4810-a4b7-8bcae33a1d73" />
+
+## Media Browser
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/6dd41a07-c59b-485c-8c86-681e561f50cc" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/b7acb8c7-9b5e-47ca-afd2-90b6034daa60" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/967406e1-42cf-4cf9-bf1b-bd6d7e4ba350" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/87f2d922-959d-4007-b715-3bd1aacb935b" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/7955d2eb-c72b-485b-96e6-b05772b73970" />
+
 ## Disclaimer
 
 This is a personal hobby project and is not affiliated with Google or Nest. It uses an unofficial API that could be changed or discontinued by Google at any time, which may cause this integration to stop working. It is provided "as-is," with no warranty whatsoever. Use at your own risk.
