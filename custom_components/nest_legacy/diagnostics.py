@@ -30,6 +30,7 @@ TO_REDACT = [
     "latitude",
     "location",
     "longitude",
+    "mac_address",
     "name",
     "parameters",
     "pairing_token",
@@ -51,6 +52,8 @@ TO_REDACT = [
     "zip",
     "cookie",
     "issuetoken",
+    "title",
+    "phone_numbers",
 ]
 
 
