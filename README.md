@@ -47,9 +47,8 @@ This integration creates a rich set of entities for your Nest devices.
 - **Nest Thermostat**:
   - `climate` entity for full control over temperature and HVAC modes (Heat, Cool, Heat/Cool, Off).
   - `fan` entity to control the fan independently.
-  - `number` entity to configure the fan timer duration.
   - `binary_sensor` for occupancy and Eco Mode status.
-  - `sensor` for humidity and backplate temperature.
+  - `sensor` entities for humidity, backplate temperature, and diagnostic fan timer values.
 
 - **Nest Protect**:
   - `binary_sensor` entities for Smoke, Carbon Monoxide (CO), and Heat alarms.
@@ -145,38 +144,38 @@ This integration would not be possible without the extensive research and work d
 
 ## Screenshots
 
-### Configuration
+### Configuration Screenshots
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/92bf01b3-98b6-4a01-9e6e-5e6e22dc1ca7" />
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/cae9c9ea-317e-4823-b7d0-744982d51ee4" />
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/5ad4ed27-85e2-4eca-b892-5c4f13f56aef" />
 
-### Nest Protect
+### Nest Protect Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/e1e42e58-78be-4d26-b8aa-08a124703d58" />
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/571b9e65-c6c7-422c-8482-e3c8a3319992" />
 
-### Nest Thermostat
+### Nest Thermostat Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/a13cdebb-2f75-49fd-86b1-d4ae37314747" />
 
-### Nest Camera
+### Nest Camera Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/d353b7de-c538-4fa6-bb0c-736377cd8419" />
 
-### Nest Doorbell
+### Nest Doorbell Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/eb2c978f-ba9c-4c75-a726-b5db7e2660ae" />
 
-### Nest Lock
+### Nest Lock Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/c7e248b7-be6f-479f-9475-b70f67ea1939" />
 
-## Home
+## Home Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/024763eb-bd52-4810-a4b7-8bcae33a1d73" />
 
-## Media Browser
+## Media Browser Screenshot
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/6dd41a07-c59b-485c-8c86-681e561f50cc" />
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/b7acb8c7-9b5e-47ca-afd2-90b6034daa60" />

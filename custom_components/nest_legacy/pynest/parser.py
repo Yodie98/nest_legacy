@@ -353,6 +353,7 @@ class NestParser:
                 data.get("fan_capabilities", "stage1").replace("stage", "") or "1"
             ),
             fan_duration=data.get("fan_duration", 900),
+            fan_timer_timeout=data.get("fan_timer_timeout", 0),
             occupancy=occupancy,
             battery_level=_scale_value(data.get("battery_level", 0), 3.6, 3.9, 0, 100),
             has_hot_water_control=data.get("has_hot_water_control", False),

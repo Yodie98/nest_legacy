@@ -112,6 +112,7 @@ class NestThermostat(NestDevice):
     fan_timer_speed: int = 1
     fan_max_speed: int = 1
     fan_duration: int = 900
+    fan_timer_timeout: int = 0
     occupancy: bool = False
     battery_level: float = 0.0
     leaf: bool = False

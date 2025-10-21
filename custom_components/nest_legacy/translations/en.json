@@ -131,9 +131,6 @@
         "number": {
             "auto_relock_duration": {
                 "name": "Auto-Relock Duration"
-            },
-            "fan_duration": {
-                "name": "Fan Duration"
             }
         },
         "select": {
@@ -160,6 +157,12 @@
             },
             "battery_level": {
                 "name": "Battery Level"
+            },
+            "fan_duration_config": {
+                "name": "Fan Duration Configuration"
+            },
+            "fan_timer_timeout": {
+                "name": "Fan Timer Timeout"
             },
             "humidity": {
                 "name": "Humidity"

@@ -91,8 +91,7 @@
       "lock": { "name": "Lock" }
     },
     "number": {
-      "auto_relock_duration": { "name": "Auto-Relock Duration" },
-      "fan_duration": { "name": "Fan Duration" }
+      "auto_relock_duration": { "name": "Auto-Relock Duration" }
     },
     "select": {
       "home_away_mode": {
@@ -115,6 +114,8 @@
     "sensor": {
       "backplate_temperature": { "name": "Backplate Temperature" },
       "battery_level": { "name": "Battery Level" },
+      "fan_duration_config": { "name": "Fan Duration Configuration" },
+      "fan_timer_timeout": { "name": "Fan Timer Timeout" },
       "humidity": { "name": "Humidity" },
       "last_action": {
         "name": "Last Action",

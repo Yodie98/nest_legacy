@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
-from .pynest.models import NestLock, NestThermostat
+from .pynest.models import NestLock
 
 
 async def async_setup_entry(
@@ -19,45 +19,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Nest number platform from a config entry."""
     coordinator = entry.runtime_data
-    entities: list[NumberEntity] = [
-        NestThermostatFanDuration(coordinator, device)
-        for device in coordinator.data.values()
-        if isinstance(device, NestThermostat) and device.has_fan
-    ]
+    entities: list[NumberEntity] = []
     entities.extend(
         NestLockAutoRelockDuration(coordinator, device)
         for device in coordinator.data.values()
         if isinstance(device, NestLock)
     )
     async_add_devices(entities)
-
-
-class NestThermostatFanDuration(NestEntity[NestThermostat], NumberEntity):
-    """Representation of a Nest Thermostat Fan Duration."""
-
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_mode = NumberMode.BOX
-    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
-    _attr_native_min_value = 15
-    _attr_native_max_value = 12 * 60  # 12 hours
-    _attr_native_step = 15
-    _attr_translation_key = "fan_duration"
-    _attr_icon = "mdi:timer-cog"
-
-    def __init__(self, coordinator: NestCoordinator, device: NestThermostat) -> None:
-        """Initialize the number entity."""
-        super().__init__(coordinator, device)
-        self._attr_unique_id = f"{device.serial_number}-fan_duration"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the entity state."""
-        return self.device.fan_duration / 60
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Update the current value."""
-        duration_seconds = int(value * 60)
-        await self._set_device_data({"fan_duration": duration_seconds})
 
 
 class NestLockAutoRelockDuration(NestEntity[NestLock], NumberEntity):

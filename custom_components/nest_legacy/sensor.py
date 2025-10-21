@@ -13,7 +13,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -125,6 +130,32 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     ),
 )
 
+_FAN_DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
+    NestSensorEntityDescription(
+        key="fan_duration",
+        translation_key="fan_duration_config",
+        value_fn=lambda device: device.fan_duration,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        icon="mdi:timer-sand",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_types=(NestThermostat,),
+        entity_registry_enabled_default=False,
+    ),
+    NestSensorEntityDescription(
+        key="fan_timer_timeout",
+        translation_key="fan_timer_timeout",
+        value_fn=lambda device: datetime.datetime.fromtimestamp(
+            device.fan_timer_timeout, datetime.UTC
+        )
+        if device.fan_timer_timeout > 0
+        else None,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_types=(NestThermostat,),
+        entity_registry_enabled_default=False,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -140,6 +171,14 @@ async def async_setup_entry(
         if isinstance(device, description.device_types)
         and hasattr(device, description.key)
     ]
+    # Add fan-specific sensors
+    entities.extend(
+        NestSensor(coordinator, device, description)
+        for device in coordinator.data.values()
+        if isinstance(device, NestThermostat) and device.has_fan
+        for description in _FAN_DESCRIPTIONS
+        if hasattr(device, description.key)
+    )
     async_add_devices(entities)
 
 

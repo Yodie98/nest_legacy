@@ -37,7 +37,11 @@ async def async_setup_entry(
 class NestThermostatFan(NestEntity[NestThermostat], FanEntity):
     """Representation of a Nest Thermostat Fan."""
 
-    _attr_supported_features = FanEntityFeature.SET_SPEED
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_OFF
+        | FanEntityFeature.TURN_ON
+    )
     _attr_translation_key = "fan"
 
     def __init__(self, coordinator: NestCoordinator, device: NestThermostat) -> None:
