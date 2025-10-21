@@ -183,11 +183,13 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
     async def _async_subscribe_for_updates(self) -> None:
         """Listen for data updates from the Nest API."""
         failures = 0
+        force_reauth = False
         while True:
             try:
-                if self.client.is_expired():
+                if self.client.is_expired() or force_reauth:
                     _LOGGER.debug("Re-authenticating Nest session")
                     await self.async_reauthenticate()
+                    force_reauth = False  # Reset on success
 
                 updates = await self.client.async_subscribe_for_updates()
                 failures = 0  # Reset on success
@@ -232,6 +234,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
 
             except NotAuthenticatedException:
                 _LOGGER.debug("Subscriber not authenticated. Re-authenticating")
+                force_reauth = True
                 await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
                 continue
             except BadCredentialsException:
@@ -263,11 +266,13 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
     async def _async_observe_for_updates(self) -> None:
         """Listen for protobuf data updates from the Nest API."""
         failures = 0
+        force_reauth = False
         while True:
             try:
-                if self.client.is_expired():
+                if self.client.is_expired() or force_reauth:
                     _LOGGER.debug("Re-authenticating Nest session for observe")
                     await self.async_reauthenticate()
+                    force_reauth = False  # Reset on success
 
                 async for updates in self.client.async_observe_for_updates():
                     failures = 0  # Reset on success
@@ -317,6 +322,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
 
             except NotAuthenticatedException:
                 _LOGGER.debug("Observer not authenticated. Re-authenticating")
+                force_reauth = True
                 await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
                 continue
             except BadCredentialsException:
