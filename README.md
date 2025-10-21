@@ -157,7 +157,7 @@ This integration would not be possible without the extensive research and work d
 
 ### Nest Thermostat Screenshot
 
-<img width="30%" alt="image" src="https://github.com/user-attachments/assets/a13cdebb-2f75-49fd-86b1-d4ae37314747" />
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/88a1082e-e38e-4a3e-95cd-59018ce383be" />
 
 ### Nest Camera Screenshot
 
