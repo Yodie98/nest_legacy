@@ -156,6 +156,10 @@ This integration would not be possible without the extensive research and work d
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/e1e42e58-78be-4d26-b8aa-08a124703d58" />
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/571b9e65-c6c7-422c-8482-e3c8a3319992" />
 
+### Nest Thermostat
+
+<img width="30%" alt="image" src="https://github.com/user-attachments/assets/a13cdebb-2f75-49fd-86b1-d4ae37314747" />
+
 ### Nest Camera
 
 <img width="30%" alt="image" src="https://github.com/user-attachments/assets/d353b7de-c538-4fa6-bb0c-736377cd8419" />
