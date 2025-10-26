@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import datetime
+import logging
 from typing import Any
 
 from .enums import (
@@ -100,6 +101,9 @@ class ParsedData:
     devices: list[NestDevice]
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 class NestParser:
     """Parses raw Nest API data into structured objects."""
 
@@ -173,6 +177,10 @@ class NestParser:
         device_id = key.split(".")[1]
         widget_key = f"widget_track.{device_id}"
         online = raw_data.get(widget_key, {}).get("online", False)
+        replace_by_ts = value.get("replace_by_date_utc_secs")
+        replace_by_date = (
+            datetime.date.fromtimestamp(replace_by_ts) if replace_by_ts else None
+        )
         if value.get("wired_or_battery") == 0:
             return NestWiredProtect(
                 object_key=key,
@@ -188,9 +196,7 @@ class NestParser:
                 heat_status=value.get("heat_status", 0) != 0,
                 battery_level=_milli_volt_to_percentage(value.get("battery_level", 0)),
                 battery_health_state=value.get("battery_health_state", 0),
-                replace_by_date=datetime.date.fromtimestamp(
-                    value["replace_by_date_utc_secs"]
-                ),
+                replace_by_date=replace_by_date,
                 occupancy=not value.get("auto_away", True),
                 line_power_present=value.get("line_power_present", False),
                 night_light_enable=value.get("night_light_enable", False),
@@ -236,9 +242,7 @@ class NestParser:
             heat_status=value.get("heat_status", 0) != 0,
             battery_level=_milli_volt_to_percentage(value.get("battery_level", 0)),
             battery_health_state=value.get("battery_health_state", 0),
-            replace_by_date=datetime.date.fromtimestamp(
-                value["replace_by_date_utc_secs"]
-            ),
+            replace_by_date=replace_by_date,
             night_light_enable=value.get("night_light_enable", False),
             steam_detection_enable=value.get("steam_detection_enable", False),
             night_light_brightness=value.get("night_light_brightness"),
@@ -298,7 +302,28 @@ class NestParser:
         elif data.get("hvac_ac_state"):
             hvac_state = ThermostatHvacState.COOLING
 
-        hvac_mode = ThermostatHvacMode(data.get("target_temperature_type", "off"))
+        target_temp_type = data.get("target_temperature_type", "off")
+        try:
+            hvac_mode = ThermostatHvacMode(target_temp_type)
+        except ValueError:
+            _LOGGER.warning(
+                "Unsupported value for ThermostatHvacMode: '%s'. Defaulting to OFF",
+                target_temp_type,
+            )
+            hvac_mode = ThermostatHvacMode.OFF
+
+        temp_scale_value = data.get("temperature_scale")
+        try:
+            temp_scale = (
+                TemperatureScale(temp_scale_value) if temp_scale_value else None
+            )
+        except (ValueError, TypeError):
+            _LOGGER.warning(
+                "Unsupported value for TemperatureScale: '%s'. Defaulting to None",
+                temp_scale_value,
+            )
+            temp_scale = None
+
         is_eco = data.get("eco", {}).get("mode") in ("auto-eco", "manual-eco")
         if is_eco:
             target_low = data.get("away_temperature_low")
@@ -320,6 +345,20 @@ class NestParser:
                     sensor_data = raw_data[sensor_key]
                     current_temperature = sensor_data.get("current_temperature")
 
+        fan_timer_speed_str = data.get("fan_timer_speed", "stage0").replace("stage", "")
+        fan_timer_speed = (
+            int(fan_timer_speed_str)
+            if fan_timer_speed_str and fan_timer_speed_str != "none"
+            else 1
+        )
+
+        fan_max_speed_str = data.get("fan_capabilities", "stage1").replace("stage", "")
+        fan_max_speed = (
+            int(fan_max_speed_str)
+            if fan_max_speed_str and fan_max_speed_str != "none"
+            else 1
+        )
+
         return NestThermostat(
             object_key=key,
             serial_number=value["serial_number"],
@@ -329,9 +368,7 @@ class NestParser:
             software_version=value.get("software_version"),
             mac_address=value.get("mac_address"),
             online=online,
-            temperature_scale=TemperatureScale(data["temperature_scale"])
-            if data.get("temperature_scale")
-            else None,
+            temperature_scale=temp_scale,
             current_temperature=current_temperature,
             backplate_temperature=value.get("backplate_temperature"),
             target_temperature=data.get("target_temperature"),
@@ -346,12 +383,8 @@ class NestParser:
             can_cool=data.get("can_cool", False),
             has_fan=data.get("has_fan", False),
             fan_state=data.get("fan_timer_timeout", 0) > 0,
-            fan_timer_speed=int(
-                data.get("fan_timer_speed", "stage0").replace("stage", "") or "1"
-            ),
-            fan_max_speed=int(
-                data.get("fan_capabilities", "stage1").replace("stage", "") or "1"
-            ),
+            fan_timer_speed=fan_timer_speed,
+            fan_max_speed=fan_max_speed,
             fan_duration=data.get("fan_duration", 900),
             fan_timer_timeout=data.get("fan_timer_timeout", 0),
             occupancy=occupancy,
