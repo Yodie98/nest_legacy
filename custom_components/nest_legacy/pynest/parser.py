@@ -110,33 +110,35 @@ class NestParser:
     def parse_all(self, raw_data: dict[str, Any]) -> ParsedData:
         """Process all raw data into a device list."""
         devices: list[NestDevice] = []
-        device: NestDevice | None
         thermostats: list[NestThermostat] = []
 
         wheres_map = self._build_wheres_map(raw_data)
 
         for key, value in raw_data.items():
-            if key.startswith("topaz."):
-                if device := self._parse_protect(key, value, raw_data, wheres_map):
+            try:
+                device: NestDevice | None = None
+                if key.startswith("topaz."):
+                    device = self._parse_protect(key, value, raw_data, wheres_map)
+                elif key.startswith("device."):
+                    if device := self._parse_thermostat(key, value, raw_data, wheres_map):
+                        thermostats.append(device)
+                elif key.startswith("kryptonite."):
+                    device = self._parse_tempsensor(key, value, wheres_map)
+                elif key.startswith("quartz."):
+                    device = self._parse_camera(key, value, wheres_map)
+                elif key.startswith("structure."):
+                    device = self._parse_structure(key, value, raw_data)
+                elif key.startswith("DEVICE_"):
+                    # Handle protobuf devices
+                    if "bolt_lock" in value:
+                        device = self._parse_protobuf_lock(key, value)
+
+                if device:
                     devices.append(device)
-            elif key.startswith("device."):
-                if device := self._parse_thermostat(key, value, raw_data, wheres_map):
-                    devices.append(device)
-                    thermostats.append(device)
-            elif key.startswith("kryptonite."):
-                if device := self._parse_tempsensor(key, value, wheres_map):
-                    devices.append(device)
-            elif key.startswith("quartz."):
-                if device := self._parse_camera(key, value, wheres_map):
-                    devices.append(device)
-            elif key.startswith("structure."):
-                if device := self._parse_structure(key, value, raw_data):
-                    devices.append(device)
-            elif key.startswith("DEVICE_"):
-                # Handle protobuf devices
-                if "bolt_lock" in value:
-                    if device := self._parse_protobuf_lock(key, value):
-                        devices.append(device)
+            except (KeyError, TypeError, ValueError) as e:
+                _LOGGER.warning(
+                    "Skipping device %s due to a parsing error: %s", key, e
+                )
 
         # Second pass to create derived devices like Heat Link
         devices.extend(
