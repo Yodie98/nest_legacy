@@ -409,7 +409,7 @@ class NestParser:
         """Parse a Nest Temperature Sensor."""
         return NestTempSensor(
             object_key=key,
-            serial_number=value["serial_number"],
+            serial_number=value.get("serial_number", key.split(".")[1]),
             location=self._get_location(value, wheres_map),
             name="Temperature Sensor",
             model=value.get("model"),
