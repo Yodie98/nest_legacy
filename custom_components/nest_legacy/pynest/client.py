@@ -1518,30 +1518,6 @@ class NestClient:
             )
             await self._async_send_command(device, cmd)
 
-        # Handle Temperature Scale
-        if "temperature_scale" in data:
-            scale_val = data["temperature_scale"]
-            scale_enum = (
-                nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
-                if scale_val == "F"
-                else nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_C
-            )
-            trait = _get_trait_copy(current_traits, nest_hvac_pb2.DisplaySettingsTrait)
-            trait.temperatureScale = scale_enum
-
-            any_proto = google.protobuf.any_pb2.Any()
-            any_proto.Pack(trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX)
-
-            req = v1_pb2.TraitUpdateStateRequest(
-                traitRequest=v1_pb2.TraitRequest(
-                    resourceId=device.object_key,
-                    traitLabel="display_settings",
-                    requestId=str(uuid.uuid4()),
-                ),
-                state=any_proto,
-            )
-            await self._async_update_trait_state(req)
-
         # Handle Fan Control
         if "fan_timer_timeout" in data or "fan_timer_speed" in data:
             await self._set_proto_thermostat_fan(device, data, now, current_traits)

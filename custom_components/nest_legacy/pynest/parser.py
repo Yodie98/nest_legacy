@@ -954,18 +954,6 @@ class NestParser:
             fan_max_speed,
         ) = self._parse_proto_fan(traits)
 
-        # Display Settings (Temp Scale)
-        display_trait: nest_hvac_pb2.DisplaySettingsTrait | None = traits.get(
-            nest_hvac_pb2.DisplaySettingsTrait.DESCRIPTOR.full_name
-        )
-        temperature_scale = TemperatureScale.CELSIUS
-        if display_trait:
-            if (
-                display_trait.temperatureScale
-                == nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
-            ):
-                temperature_scale = TemperatureScale.FAHRENHEIT
-
         # Temperature Lock Settings
         lock_trait: nest_hvac_pb2.TemperatureLockSettingsTrait | None = traits.get(
             nest_hvac_pb2.TemperatureLockSettingsTrait.DESCRIPTOR.full_name
@@ -1022,13 +1010,13 @@ class NestParser:
             hvac_mode=hvac_mode,
             hvac_state=hvac_state,
             is_eco_mode=is_eco_mode,
-			leaf=leaf,
+            leaf=leaf,
             fan_state=fan_state,
             fan_timer_timeout=fan_timer_timeout,
             fan_timer_speed=fan_timer_speed,
             fan_duration=fan_duration,
             fan_max_speed=fan_max_speed,
-            temperature_scale=temperature_scale,
+            temperature_scale=TemperatureScale.CELSIUS,
             temperature_lock=temperature_lock,
             can_heat=can_heat,
             can_cool=can_cool,
