@@ -889,6 +889,8 @@ class NestParser:
         can_heat = True
         can_cool = True
         has_dehumidifier = False
+        has_hot_water_control = False
+
         if capabilities_trait:
             can_heat = (
                 capabilities_trait.hasStage1Heat
@@ -901,6 +903,7 @@ class NestParser:
                 or capabilities_trait.hasStage3Cool
             )
             has_dehumidifier = capabilities_trait.hasDehumidifier
+            has_hot_water_control = capabilities_trait.hasHotWaterControl
 
         # Eco Mode
         eco_trait: nest_hvac_pb2.EcoModeStateTrait | None = traits.get(
@@ -974,14 +977,14 @@ class NestParser:
             nest_hvac_pb2.HotWaterSettingsTrait.DESCRIPTOR.full_name
         )
 
-        has_hot_water_control = False
         hot_water_active = False
         hot_water_boost_time_to_end = 0
         hot_water_temperature = None
         current_water_temperature = None
+        hot_water_mode = HotWaterMode.OFF
+        hot_water_away_enabled = False
 
         if hw_trait:
-            has_hot_water_control = True
             hot_water_active = hw_trait.boilerActive
             if hw_trait.HasField("temperature"):
                 current_water_temperature = hw_trait.temperature.value
@@ -993,6 +996,20 @@ class NestParser:
                 )
             if hw_settings_trait.HasField("temperature"):
                 hot_water_temperature = hw_settings_trait.temperature.value
+
+            if hw_settings_trait.HasField("mode"):
+                if (
+                    hw_settings_trait.mode
+                    == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
+                ):
+                    hot_water_mode = HotWaterMode.SCHEDULE
+                elif (
+                    hw_settings_trait.mode
+                    == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_OFF
+                ):
+                    hot_water_mode = HotWaterMode.OFF
+
+            hot_water_away_enabled = hw_settings_trait.structureModeFollowEnabled
 
         return NestThermostat(
             object_key=key,
@@ -1030,6 +1047,8 @@ class NestParser:
             hot_water_boost_time_to_end=hot_water_boost_time_to_end,
             hot_water_temperature=hot_water_temperature,
             current_water_temperature=current_water_temperature,
+            hot_water_mode=hot_water_mode,
+            hot_water_away_enabled=hot_water_away_enabled,
             has_dehumidifier=has_dehumidifier,
             dehumidifier_state=dehumidifier_state,
         )

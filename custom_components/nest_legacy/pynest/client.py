@@ -744,6 +744,24 @@ class NestClient:
                 data["hot_water_temperature"]
             )
 
+        if "hot_water_mode" in data:
+            update_required = True
+            mode_val = data["hot_water_mode"]  # This is a string "schedule" or "off"
+
+            pb_mode = (
+                nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_OFF
+            )
+            if mode_val == "schedule":
+                pb_mode = nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
+
+            hot_water_settings_trait.mode = pb_mode
+
+        if "hot_water_away_enabled" in data:
+            update_required = True
+            hot_water_settings_trait.structureModeFollowEnabled = data[
+                "hot_water_away_enabled"
+            ]
+
         if update_required:
             any_proto = google.protobuf.any_pb2.Any()
             # Note: Hot Water traits are usually on the thermostat resource
