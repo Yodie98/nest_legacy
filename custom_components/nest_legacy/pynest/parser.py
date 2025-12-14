@@ -800,8 +800,28 @@ class NestParser:
             else 900
         )
 
+        fan_caps_trait: nest_hvac_pb2.FanControlCapabilitiesTrait | None = traits.get(
+            nest_hvac_pb2.FanControlCapabilitiesTrait.DESCRIPTOR.full_name
+        )
         fan_max_speed = 1
-        if fan_timer_speed > 1:
+        if fan_caps_trait:
+            if (
+                fan_caps_trait.maxAvailableSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE1
+            ):
+                fan_max_speed = 1
+            elif (
+                fan_caps_trait.maxAvailableSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE2
+            ):
+                fan_max_speed = 2
+            elif (
+                fan_caps_trait.maxAvailableSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE3
+            ):
+                fan_max_speed = 3
+        # Fallback to guessing if capability trait missing
+        elif fan_timer_speed > 1:
             fan_max_speed = fan_timer_speed
         elif (
             fan_trait
@@ -809,6 +829,7 @@ class NestParser:
             == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE3
         ):
             fan_max_speed = 3
+
         return (
             fan_state,
             fan_timer_timeout,
@@ -951,6 +972,12 @@ class NestParser:
         )
         temperature_lock = lock_trait.enabled if lock_trait else False
 
+        # Parse Leaf Trait
+        leaf_trait: nest_hvac_pb2.LeafTrait | None = traits.get(
+            nest_hvac_pb2.LeafTrait.DESCRIPTOR.full_name
+        )
+        leaf = leaf_trait.active if leaf_trait else False
+
         # Hot Water / Heat Link Parsing
         hw_trait: nest_hvac_pb2.HotWaterTrait | None = traits.get(
             nest_hvac_pb2.HotWaterTrait.DESCRIPTOR.full_name
@@ -995,6 +1022,7 @@ class NestParser:
             hvac_mode=hvac_mode,
             hvac_state=hvac_state,
             is_eco_mode=is_eco_mode,
+			leaf=leaf,
             fan_state=fan_state,
             fan_timer_timeout=fan_timer_timeout,
             fan_timer_speed=fan_timer_speed,

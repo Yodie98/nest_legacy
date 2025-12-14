@@ -14,7 +14,6 @@ import google.protobuf.any_pb2
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
-import google.protobuf.wrappers_pb2
 
 from .enums import BucketType, Environment, StructureMode, ThermostatHvacMode
 from .exceptions import (
@@ -90,6 +89,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     nest_hvac_pb2.HvacEquipmentCapabilitiesTrait,
     nest_hvac_pb2.SeasonalSavingsSettingsTrait,
     nest_hvac_pb2.FanControlSettingsTrait,
+    nest_hvac_pb2.FanControlCapabilitiesTrait,
     nest_hvac_pb2.TargetTemperatureSettingsTrait,
     nest_hvac_pb2.EcoModeTrait,
     nest_hvac_pb2.EcoModeStateTrait,
@@ -97,6 +97,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     nest_hvac_pb2.HumidityControlSettingsTrait,
     nest_hvac_pb2.DisplaySettingsTrait,
     nest_hvac_pb2.TemperatureLockSettingsTrait,
+    nest_hvac_pb2.LeafTrait,
     # Hot Water / Heat Link
     nest_hvac_pb2.HotWaterTrait,
     nest_hvac_pb2.HotWaterSettingsTrait,
@@ -132,6 +133,7 @@ _OBSERVE_PROTECT_TRAITS = (
     nest_safety_pb2.SafetyAlarmSettingsTrait,
     # Power (for Protect)
     weave_power_pb2.BatteryPowerSourceTrait,
+    weave_power_pb2.PowerSourceTrait,
     # Description / Identity (for Protect)
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
