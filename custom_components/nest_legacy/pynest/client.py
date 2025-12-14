@@ -92,6 +92,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     nest_hvac_pb2.FanControlSettingsTrait,
     nest_hvac_pb2.TargetTemperatureSettingsTrait,
     nest_hvac_pb2.EcoModeTrait,
+    nest_hvac_pb2.EcoModeStateTrait,
     nest_hvac_pb2.EcoModeSettingsTrait,
     nest_hvac_pb2.HumidityControlSettingsTrait,
     nest_hvac_pb2.DisplaySettingsTrait,

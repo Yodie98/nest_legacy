@@ -883,7 +883,7 @@ class NestParser:
 
         # Eco Mode
         eco_trait: nest_hvac_pb2.EcoModeStateTrait | None = traits.get(
-            nest_hvac_pb2.EcoModeTrait.DESCRIPTOR.full_name
+            nest_hvac_pb2.EcoModeStateTrait.DESCRIPTOR.full_name
         )
         is_eco_mode = (
             eco_trait.ecoMode
