@@ -132,6 +132,11 @@ class NestThermostat(NestDevice):
     hot_water_boost_time_to_end: int = 0
     hot_water_temperature: float | None = None
     current_water_temperature: float | None = None
+    has_humidifier: bool = False
+    humidifier_state: bool = False
+    has_air_filter: bool = False
+    filter_replacement_needed: bool = False
+    filter_runtime: int = 0
 
 
 @dataclass(frozen=True)

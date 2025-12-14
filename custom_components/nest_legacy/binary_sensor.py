@@ -191,6 +191,14 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.leaf,
         device_types=(NestThermostat,),
     ),
+    NestBinarySensorEntityDescription(
+        key="filter_replacement_needed",
+        translation_key="filter_replacement_needed",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda device: device.filter_replacement_needed,
+        device_types=(NestThermostat,),
+    ),
     # Lock sensors
     NestBinarySensorEntityDescription(
         key="tampered",

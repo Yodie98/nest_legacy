@@ -890,6 +890,8 @@ class NestParser:
         can_cool = True
         has_dehumidifier = False
         has_hot_water_control = False
+        has_humidifier = False
+        has_air_filter = False
 
         if capabilities_trait:
             can_heat = (
@@ -904,6 +906,8 @@ class NestParser:
             )
             has_dehumidifier = capabilities_trait.hasDehumidifier
             has_hot_water_control = capabilities_trait.hasHotWaterControl
+            has_humidifier = capabilities_trait.hasHumidifier
+            has_air_filter = capabilities_trait.hasAirFilter
 
         # Eco Mode
         eco_trait: nest_hvac_pb2.EcoModeStateTrait | None = traits.get(
@@ -940,10 +944,21 @@ class NestParser:
         )
         dehumidifier_state = False
         target_humidity = None
-        if humid_ctrl_trait and humid_ctrl_trait.HasField("dehumidifierTargetHumidity"):
-            dehumidifier_state = humid_ctrl_trait.dehumidifierTargetHumidity.enabled
-            if humid_ctrl_trait.dehumidifierTargetHumidity.HasField("value"):
+        if humid_ctrl_trait:
+            if humid_ctrl_trait.HasField("dehumidifierTargetHumidity"):
+                dehumidifier_state = humid_ctrl_trait.dehumidifierTargetHumidity.enabled
                 target_humidity = humid_ctrl_trait.dehumidifierTargetHumidity.value
+
+            # Prefer standard targetHumidity if available
+            if humid_ctrl_trait.HasField("targetHumidity"):
+                target_humidity = humid_ctrl_trait.targetHumidity.value
+
+        # Humidifier State
+        humidifier_state = False
+        if hvac_trait.HasField("hvacState"):
+            humidifier_state = hvac_trait.hvacState.humidifierActive
+            if hvac_trait.hvacState.dehumidifierActive:
+                dehumidifier_state = True
 
         # HVAC State (using helper)
         hvac_state = self._parse_proto_hvac_state(hvac_trait)
@@ -968,6 +983,18 @@ class NestParser:
             nest_hvac_pb2.LeafTrait.DESCRIPTOR.full_name
         )
         leaf = leaf_trait.active if leaf_trait else False
+
+        # Filter Reminder
+        filter_trait: nest_hvac_pb2.FilterReminderTrait | None = traits.get(
+            nest_hvac_pb2.FilterReminderTrait.DESCRIPTOR.full_name
+        )
+        filter_replacement_needed = False
+        filter_runtime = 0
+        if filter_trait:
+            if filter_trait.HasField("filterReplacementNeeded"):
+                filter_replacement_needed = filter_trait.filterReplacementNeeded.value
+            if filter_trait.HasField("filterRuntime"):
+                filter_runtime = filter_trait.filterRuntime.ToSeconds()
 
         # Hot Water / Heat Link Parsing
         hw_trait: nest_hvac_pb2.HotWaterTrait | None = traits.get(
@@ -1051,6 +1078,11 @@ class NestParser:
             hot_water_away_enabled=hot_water_away_enabled,
             has_dehumidifier=has_dehumidifier,
             dehumidifier_state=dehumidifier_state,
+            has_humidifier=has_humidifier,
+            humidifier_state=humidifier_state,
+            has_air_filter=has_air_filter,
+            filter_replacement_needed=filter_replacement_needed,
+            filter_runtime=filter_runtime,
         )
 
     def _parse_protobuf_protect(

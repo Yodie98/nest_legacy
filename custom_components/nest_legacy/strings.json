@@ -58,6 +58,7 @@
       "co_status": { "name": "Carbon Monoxide" },
       "co_test": { "name": "CO Test" },
       "eco_mode": { "name": "Eco Mode" },
+      "filter_replacement_needed": { "name": "Filter Replacement Needed" },
       "heat_status": { "name": "Heat" },
       "humidity_test": { "name": "Humidity Test" },
       "led_test": { "name": "LED Test" },
@@ -129,6 +130,7 @@
     "sensor": {
       "backplate_temperature": { "name": "Backplate Temperature" },
       "battery_level": { "name": "Battery Level" },
+      "filter_runtime": { "name": "Filter Runtime" },
       "fan_duration_config": { "name": "Fan Duration Configuration" },
       "fan_timer_timeout": { "name": "Fan Timer Timeout" },
       "humidity": { "name": "Humidity" },

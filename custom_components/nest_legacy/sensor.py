@@ -132,6 +132,15 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         device_types=(NestThermostat,),
         entity_registry_enabled_default=False,
     ),
+    NestSensorEntityDescription(
+        key="filter_runtime",
+        translation_key="filter_runtime",
+        value_fn=lambda device: device.filter_runtime,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_types=(NestThermostat,),
+    ),
     # Lock
     NestSensorEntityDescription(
         key="bolt_actor",
