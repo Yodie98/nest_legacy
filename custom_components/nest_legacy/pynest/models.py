@@ -31,6 +31,7 @@ class NestDevice:
     online: bool = True
     location: str | None = None
     mac_address: str | None = None
+    is_protobuf: bool = False
 
     @property
     def hardware_version(self) -> str | None:
@@ -102,6 +103,7 @@ class NestThermostat(NestDevice):
     target_temperature_low: float | None = None
     target_temperature_high: float | None = None
     current_humidity: int | None = None
+    target_humidity: float | None = None
     hvac_state: ThermostatHvacState = ThermostatHvacState.OFF
     hvac_mode: ThermostatHvacMode = ThermostatHvacMode.OFF
     is_eco_mode: bool = False
@@ -113,9 +115,12 @@ class NestThermostat(NestDevice):
     fan_max_speed: int = 1
     fan_duration: int = 900
     fan_timer_timeout: int = 0
+    has_dehumidifier: bool = False
+    dehumidifier_state: bool = False
     occupancy: bool = False
     battery_level: float = 0.0
     leaf: bool = False
+    temperature_lock: bool = False
     # Heat Link properties for derived device
     has_hot_water_control: bool = False
     heat_link_model: str | None = None

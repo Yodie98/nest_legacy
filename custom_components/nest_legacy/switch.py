@@ -12,7 +12,14 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
-from .pynest.models import NestCamera, NestDevice, NestDoorbell, NestLock, NestProtect
+from .pynest.models import (
+    NestCamera,
+    NestDevice,
+    NestDoorbell,
+    NestLock,
+    NestProtect,
+    NestThermostat,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,6 +120,21 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:lock-clock",
         device_types=(NestLock,),
     ),
+    # Thermostat
+    NestSwitchEntityDescription(
+        key="temperature_lock",
+        translation_key="temperature_lock",
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:lock",
+        device_types=(NestThermostat,),
+    ),
+    NestSwitchEntityDescription(
+        key="dehumidifier_state",
+        translation_key="dehumidifier",
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:water-off",
+        device_types=(NestThermostat,),
+    ),
 )
 
 
@@ -128,7 +150,12 @@ async def async_setup_entry(
         for device in coordinator.data.values()
         for description in _DESCRIPTIONS
         if isinstance(device, description.device_types)
-        and hasattr(device, description.key)
+        and getattr(device, description.key) is not None
+        # Handle optional capabilities: check for existence of capability flag if relevant
+        and (
+            description.key != "dehumidifier_state"
+            or getattr(device, "has_dehumidifier", True)
+        )
     ]
     async_add_devices(entities)
 

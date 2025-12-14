@@ -124,4 +124,5 @@ class StructureMode(StrEnum):
 
     HOME = "home"
     AWAY = "away"
+    SLEEP = "sleep"
     VACATION = "vacation"

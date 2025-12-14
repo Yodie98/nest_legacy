@@ -13,18 +13,28 @@ from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     ConfigFlow,
     ConfigFlowResult,
+    OptionsFlowWithReload,
 )
 from homeassistant.const import CONF_ACCESS_TOKEN
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import (
     CONF_ACCOUNT_TYPE,
     CONF_COOKIES,
+    CONF_ENABLE_PROTOBUF_CAMERA,
+    CONF_ENABLE_PROTOBUF_LOCK,
+    CONF_ENABLE_PROTOBUF_PROTECT,
+    CONF_ENABLE_PROTOBUF_STRUCTURE,
+    CONF_ENABLE_PROTOBUF_THERMOSTAT,
+    CONF_EVENT_POLL_INTERVAL,
     CONF_FIELD_TEST,
     CONF_ISSUE_TOKEN,
+    DEFAULT_EVENT_POLL_INTERVAL,
     DOMAIN,
     LOGGER,
 )
+from .coordinator import NestConfigEntry
 from .pynest.client import NestClient
 from .pynest.exceptions import BadCredentialsException
 
@@ -154,3 +164,65 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
         reconfigure_entry = self._get_reconfigure_entry()
         self._options = dict(reconfigure_entry.data)
         return await self.async_step_user(self._options)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: NestConfigEntry) -> OptionsFlowWithReload:
+        """Create the options flow."""
+        return NestOptionsFlowHandler()
+
+
+class NestOptionsFlowHandler(OptionsFlowWithReload):
+    """Handle options."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        return await self.async_step_user(user_input)
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle options flow."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        options = {
+            vol.Optional(
+                CONF_EVENT_POLL_INTERVAL,
+                default=self.config_entry.options.get(
+                    CONF_EVENT_POLL_INTERVAL, DEFAULT_EVENT_POLL_INTERVAL
+                ),
+            ): int,
+            vol.Optional(
+                CONF_ENABLE_PROTOBUF_LOCK,
+                default=self.config_entry.options.get(CONF_ENABLE_PROTOBUF_LOCK, True),
+            ): bool,
+            vol.Optional(
+                CONF_ENABLE_PROTOBUF_THERMOSTAT,
+                default=self.config_entry.options.get(
+                    CONF_ENABLE_PROTOBUF_THERMOSTAT, True
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_ENABLE_PROTOBUF_STRUCTURE,
+                default=self.config_entry.options.get(
+                    CONF_ENABLE_PROTOBUF_STRUCTURE, False
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_ENABLE_PROTOBUF_PROTECT,
+                default=self.config_entry.options.get(
+                    CONF_ENABLE_PROTOBUF_PROTECT, False
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_ENABLE_PROTOBUF_CAMERA,
+                default=self.config_entry.options.get(
+                    CONF_ENABLE_PROTOBUF_CAMERA, False
+                ),
+            ): bool,
+        }
+
+        return self.async_show_form(step_id="user", data_schema=vol.Schema(options))

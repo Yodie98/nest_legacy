@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urljoin
 import uuid
 
 from aiohttp import ClientSession, ClientTimeout, ContentTypeError, FormData
 import google.protobuf.any_pb2
 from google.protobuf.duration_pb2 import Duration
+from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
+import google.protobuf.wrappers_pb2
 
-from .enums import BucketType, Environment, StructureMode
+from .enums import BucketType, Environment, StructureMode, ThermostatHvacMode
 from .exceptions import (
     BadCredentialsException,
     BadGatewayException,
@@ -31,12 +35,29 @@ from .models import (
     NestEnvironment,
     NestHeatLink,
     NestLock,
+    NestProtect,
     NestSession,
     NestStructure,
     NestThermostat,
 )
-from .protobuf_gen.nest.trait import occupancy_pb2 as nest_occupancy_pb2
+from .protobuf_gen.nest.trait import (
+    audio_pb2 as nest_audio_pb2,
+    history_pb2 as nest_history_pb2,
+    hvac_pb2 as nest_hvac_pb2,
+    located_pb2 as nest_located_pb2,
+    occupancy_pb2 as nest_occupancy_pb2,
+    safety_pb2 as nest_safety_pb2,
+    sensor_pb2 as nest_sensor_pb2,
+    structure_pb2 as nest_structure_pb2,
+    ui_pb2 as nest_ui_pb2,
+)
+from .protobuf_gen.nest.trait.product import (
+    camera_pb2 as nest_camera_pb2,
+    doorbell_pb2 as nest_doorbell_pb2,
+    protect_pb2 as nest_protect_pb2,
+)
 from .protobuf_gen.nestlabs.gateway import v1_pb2, v2_pb2
+from .protobuf_gen.weave import common_pb2 as weave_common_pb2
 from .protobuf_gen.weave.trait import (
     description_pb2 as weave_description_pb2,
     heartbeat_pb2 as weave_heartbeat_pb2,
@@ -44,20 +65,122 @@ from .protobuf_gen.weave.trait import (
     security_pb2 as weave_security_pb2,
 )
 
-# A list of all protobuf traits we want to subscribe to.
-_OBSERVE_TRAITS = (
-    nest_occupancy_pb2.StructureModeTrait,
+# Lock-specific traits
+_OBSERVE_LOCK_TRAITS = (
+    # Security (Locks)
     weave_security_pb2.BoltLockTrait,
+    weave_security_pb2.BoltLockSettingsTrait,
+    weave_security_pb2.BoltLockCapabilitiesTrait,
+    weave_security_pb2.TamperTrait,
+    # Power (for Locks)
     weave_power_pb2.BatteryPowerSourceTrait,
+    # Description / Identity (for Locks)
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
     weave_heartbeat_pb2.LivenessTrait,
-    weave_security_pb2.TamperTrait,
-    weave_security_pb2.BoltLockSettingsTrait,
-    weave_security_pb2.BoltLockCapabilitiesTrait,
 )
+
+# Thermostat-specific traits
+_OBSERVE_THERMOSTAT_TRAITS = (
+    # Thermostat / HVAC
+    nest_hvac_pb2.HvacControlTrait,
+    nest_hvac_pb2.SetPointScheduleSettingsTrait,
+    nest_hvac_pb2.RemoteComfortSensingSettingsTrait,
+    nest_hvac_pb2.EquipmentSettingsTrait,
+    nest_hvac_pb2.HvacEquipmentCapabilitiesTrait,
+    nest_hvac_pb2.SeasonalSavingsSettingsTrait,
+    nest_hvac_pb2.FanControlSettingsTrait,
+    nest_hvac_pb2.TargetTemperatureSettingsTrait,
+    nest_hvac_pb2.EcoModeTrait,
+    nest_hvac_pb2.EcoModeSettingsTrait,
+    nest_hvac_pb2.HumidityControlSettingsTrait,
+    nest_hvac_pb2.DisplaySettingsTrait,
+    nest_hvac_pb2.TemperatureLockSettingsTrait,
+    # Hot Water / Heat Link
+    nest_hvac_pb2.HotWaterTrait,
+    nest_hvac_pb2.HotWaterSettingsTrait,
+    # Sensors (Thermostat)
+    nest_sensor_pb2.TemperatureTrait,
+    nest_sensor_pb2.HumidityTrait,
+    # Description / Identity (for Thermostat)
+    weave_description_pb2.DeviceIdentityTrait,
+    weave_description_pb2.LabelSettingsTrait,
+    weave_heartbeat_pb2.LivenessTrait,
+)
+
+# Protect-specific traits
+_OBSERVE_PROTECT_TRAITS = (
+    # Sensors (Protect)
+    nest_sensor_pb2.SmokeTrait,
+    nest_sensor_pb2.CarbonMonoxideTrait,
+    nest_sensor_pb2.BatteryVoltageTrait,
+    nest_sensor_pb2.PassiveInfraredTrait,
+    nest_sensor_pb2.AmbientLightTrait,
+    # Protect
+    nest_protect_pb2.AudioTestTrait,
+    nest_protect_pb2.SelfTestTrait,
+    nest_protect_pb2.ProtectDeviceInfoTrait,
+    nest_protect_pb2.SafetySummaryTrait,
+    nest_protect_pb2.NightTimePromiseTrait,
+    nest_protect_pb2.NightTimePromiseSettingsTrait,
+    nest_ui_pb2.EnhancedPathlightSettingsTrait,
+    nest_ui_pb2.EnhancedPathlightStateTrait,
+    nest_ui_pb2.PathlightSettingsTrait,
+    nest_safety_pb2.SafetyAlarmSmokeTrait,
+    nest_safety_pb2.SafetyAlarmCOTrait,
+    nest_safety_pb2.SafetyAlarmSettingsTrait,
+    # Power (for Protect)
+    weave_power_pb2.BatteryPowerSourceTrait,
+    # Description / Identity (for Protect)
+    weave_description_pb2.DeviceIdentityTrait,
+    weave_description_pb2.LabelSettingsTrait,
+    weave_heartbeat_pb2.LivenessTrait,
+)
+
+# Camera-specific traits
+_OBSERVE_CAMERA_TRAITS = (
+    # Camera
+    nest_camera_pb2.StreamingProtocolTrait,
+    nest_camera_pb2.RecordingToggleTrait,
+    nest_camera_pb2.RecordingToggleSettingsTrait,
+    nest_camera_pb2.DoorStateTrait,
+    nest_camera_pb2.ActivityZoneSettingsTrait,
+    nest_camera_pb2.ObservationTriggerSettingsTrait,
+    nest_camera_pb2.CameraMigrationStatusTrait,
+    nest_camera_pb2.UploadLiveImageTrait,
+    nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait,
+    nest_audio_pb2.MicrophoneSettingsTrait,
+    # Description / Identity (for Camera)
+    weave_description_pb2.DeviceIdentityTrait,
+    weave_description_pb2.LabelSettingsTrait,
+    weave_heartbeat_pb2.LivenessTrait,
+)
+
+# Structure-specific traits
+_OBSERVE_STRUCTURE_TRAITS = (
+    nest_occupancy_pb2.StructureModeTrait,
+    # Structure
+    nest_structure_pb2.StructureInfoTrait,
+    nest_structure_pb2.StructureLocationTrait,
+    nest_structure_pb2.HomeInfoSettingsTrait,
+    nest_located_pb2.DeviceLocatedSettingsTrait,
+    # Description / Identity (for Structure)
+    weave_description_pb2.DeviceIdentityTrait,
+    weave_description_pb2.LabelSettingsTrait,
+    weave_heartbeat_pb2.LivenessTrait,
+)
+
+# All possible traits for parsing
+_ALL_POSSIBLE_TRAITS = (
+    _OBSERVE_PROTECT_TRAITS
+    + _OBSERVE_CAMERA_TRAITS
+    + _OBSERVE_THERMOSTAT_TRAITS
+    + _OBSERVE_LOCK_TRAITS
+    + _OBSERVE_STRUCTURE_TRAITS
+)
+
 _TRAIT_TYPE_TO_CLASS_MAP = {
-    trait.DESCRIPTOR.full_name: trait for trait in _OBSERVE_TRAITS
+    trait.DESCRIPTOR.full_name: trait for trait in _ALL_POSSIBLE_TRAITS
 }
 
 _USER_AGENT = "Nest/5.82.2 (iOScom.nestlabs.jasper.release) os=18.5"
@@ -151,6 +274,18 @@ def _decode_varint(buffer: bytes) -> tuple[int | None, int]:
     return None, 0
 
 
+_T = TypeVar("_T", bound=Message)
+
+
+def _get_trait_copy(traits: dict[str, Any] | None, trait_class: type[_T]) -> _T:
+    """Get a copy of a trait from the cache or create a new one if missing."""
+    if traits and (trait := traits.get(trait_class.DESCRIPTOR.full_name)):
+        new_trait = trait_class()
+        new_trait.CopyFrom(trait)
+        return new_trait
+    return trait_class()
+
+
 class NestClient:
     """Interface class for the Nest API."""
 
@@ -158,6 +293,11 @@ class NestClient:
         self,
         session: ClientSession | None = None,
         field_test: bool = False,
+        enable_protobuf_lock: bool = True,
+        enable_protobuf_thermostat: bool = True,
+        enable_protobuf_structure: bool = False,
+        enable_protobuf_protect: bool = False,
+        enable_protobuf_camera: bool = False,
     ) -> None:
         """Initialize NestClient."""
         self._session = session if session else ClientSession()
@@ -168,6 +308,25 @@ class NestClient:
         self._camera_session_token: str | None = None
         self._raw_data: dict[str, Any] = {}
         self._buckets_for_subscription: list[Bucket] = []
+
+        self._enable_protobuf_lock = enable_protobuf_lock
+        self._enable_protobuf_thermostat = enable_protobuf_thermostat
+        self._enable_protobuf_structure = enable_protobuf_structure
+        self._enable_protobuf_protect = enable_protobuf_protect
+        self._enable_protobuf_camera = enable_protobuf_camera
+
+        # Build list of traits to observe based on flags
+        self._observe_traits: list[type[Message]] = []
+        if enable_protobuf_protect:
+            self._observe_traits.extend(_OBSERVE_PROTECT_TRAITS)
+        if enable_protobuf_camera:
+            self._observe_traits.extend(_OBSERVE_CAMERA_TRAITS)
+        if enable_protobuf_thermostat:
+            self._observe_traits.extend(_OBSERVE_THERMOSTAT_TRAITS)
+        if enable_protobuf_lock:
+            self._observe_traits.extend(_OBSERVE_LOCK_TRAITS)
+        if enable_protobuf_structure:
+            self._observe_traits.extend(_OBSERVE_STRUCTURE_TRAITS)
 
     async def async_authenticate_with_google_credentials(
         self, issue_token: str, cookies: str
@@ -312,6 +471,61 @@ class NestClient:
             return True
         return self._nest_session.is_expired()
 
+    def _filter_buckets(self, buckets: list[Bucket]) -> list[Bucket]:
+        """Filter buckets based on enabled protobuf features."""
+        excluded_keys = set()
+
+        if self._enable_protobuf_thermostat:
+            excluded_keys.update(
+                {
+                    BucketType.DEVICE,
+                    BucketType.SHARED,
+                    BucketType.LINK,
+                    BucketType.TRACK,
+                    BucketType.RCS_SETTINGS,
+                    BucketType.DEMAND_RESPONSE,
+                    BucketType.TUNEUPS,
+                }
+            )
+
+        if self._enable_protobuf_protect:
+            excluded_keys.update(
+                {
+                    BucketType.TOPAZ,
+                    BucketType.TOPAZ_RESOURCE,
+                    BucketType.WIDGET_TRACK,
+                    BucketType.SAFETY,
+                    BucketType.SAFETY_SUMMARY,
+                }
+            )
+
+        if self._enable_protobuf_camera:
+            excluded_keys.update({BucketType.QUARTZ})
+
+        if self._enable_protobuf_structure:
+            excluded_keys.update(
+                {
+                    BucketType.STRUCTURE,
+                    BucketType.STRUCTURE_METADATA,
+                    BucketType.METADATA,
+                    BucketType.SCHEDULE,
+                    BucketType.WHERE,
+                }
+            )
+
+        # We keep only buckets that do NOT start with any of the excluded keys.
+        # object_key format is typically "bucket_type.id" or just "bucket_type" for singletons.
+        filtered = []
+        for bucket in buckets:
+            bucket_type = bucket.object_key.split(".")[0]
+            if bucket_type in excluded_keys:
+                continue
+            # Handle cases where object_key equals the type exactly (less common for these types but possible)
+            if bucket.object_key in excluded_keys:
+                continue
+            filtered.append(bucket)
+        return filtered
+
     async def async_get_first_data(self) -> dict[str, Any]:
         """Get all initial data from the API."""
         if not self._nest_session:
@@ -335,9 +549,12 @@ class NestClient:
                 raise PynestException(f"Error fetching first data: {result['error']}")
 
             response_data = FirstDataAPIResponse.from_dict(result)
-            self._buckets_for_subscription = response_data.updated_buckets
+            # Filter the buckets before subscribing
+            self._buckets_for_subscription = self._filter_buckets(
+                response_data.updated_buckets
+            )
             self._raw_data = {
-                bucket.object_key: bucket for bucket in response_data.updated_buckets
+                bucket.object_key: bucket for bucket in self._buckets_for_subscription
             }
             _LOGGER.debug(
                 "Successfully fetched initial data with %d buckets",
@@ -345,7 +562,7 @@ class NestClient:
             )
             return {
                 bucket.object_key: bucket.value
-                for bucket in response_data.updated_buckets
+                for bucket in self._buckets_for_subscription
             }
 
     def get_raw_data_for_diagnostics(self) -> dict[str, Any]:
@@ -396,6 +613,9 @@ class NestClient:
             updates: dict[str, dict[str, Any]] = {}
             for bucket_data in result.get("objects", []):
                 bucket = Bucket(**bucket_data)
+                # Verify we actually want this update (extra safety)
+                if not self._filter_buckets([bucket]):
+                    continue
                 updates[bucket.object_key] = bucket.value
                 for existing_bucket in self._buckets_for_subscription:
                     if existing_bucket.object_key == bucket.object_key:
@@ -441,6 +661,7 @@ class NestClient:
         shared_payload = {k: v for k, v in data.items() if k in shared_properties}
         device_payload = {k: v for k, v in data.items() if k not in shared_properties}
         if shared_payload:
+            shared_payload["target_change_pending"] = True
             shared_key = f"shared.{device_id}"
             await self._async_set_generic_property(shared_key, shared_payload)
         if device_payload:
@@ -455,9 +676,21 @@ class NestClient:
         )
 
     async def _async_set_heatlink_property(
-        self, device: NestHeatLink, data: dict[str, Any]
+        self,
+        device: NestHeatLink,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
     ) -> None:
         """Set properties for a Heat Link."""
+        if (
+            device.associated_thermostat_object_key
+            and "DEVICE_" in device.associated_thermostat_object_key
+        ):
+            await self._async_set_protobuf_heatlink_property(
+                device, data, current_traits
+            )
+            return
+
         if not device.associated_thermostat_object_key:
             return
 
@@ -474,6 +707,57 @@ class NestClient:
             device.associated_thermostat_object_key, payload
         )
 
+    async def _async_set_protobuf_heatlink_property(
+        self,
+        device: NestHeatLink,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Set properties for a Heat Link via Protobuf."""
+        if not device.associated_thermostat_object_key:
+            return
+
+        hot_water_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.HotWaterSettingsTrait
+        )
+        update_required = False
+
+        if "hot_water_boost" in data:
+            update_required = True
+            is_boost = data["hot_water_boost"]
+            # Default to 30 mins (1800s) if true, 0 if false
+            duration_seconds = 1800 if is_boost else 0
+
+            # Calculate end time
+            end_seconds = int(time.time()) + duration_seconds if is_boost else 0
+            end_ts = Timestamp()
+            end_ts.FromSeconds(end_seconds)
+
+            hot_water_settings_trait.boostTimerEnd.CopyFrom(end_ts)
+
+        if "hot_water_temperature" in data:
+            update_required = True
+            hot_water_settings_trait.temperature.value = float(
+                data["hot_water_temperature"]
+            )
+
+        if update_required:
+            any_proto = google.protobuf.any_pb2.Any()
+            # Note: Hot Water traits are usually on the thermostat resource
+            any_proto.Pack(
+                hot_water_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.associated_thermostat_object_key,
+                    traitLabel="hot_water_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
     async def _async_set_structure_property(
         self, device: NestStructure, data: dict[str, Any]
     ) -> None:
@@ -483,6 +767,7 @@ class NestClient:
                 StructureMode.HOME: nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_HOME,
                 StructureMode.AWAY: nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_AWAY,
                 StructureMode.VACATION: nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_VACATION,
+                StructureMode.SLEEP: nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_SLEEP,
             }
             target_mode = mode_map.get(data["mode"])
             if target_mode is None:
@@ -509,6 +794,9 @@ class NestClient:
             "User-Agent": _USER_AGENT,
             "Content-Type": "application/x-protobuf",
             "X-Accept-Response-Streaming": "true",
+            "X-Accept-Content-Transfer-Encoding": "binary",
+            "Referer": f"https://{self._environment.host}/",
+            "Origin": f"https://{self._environment.host}",
         }
 
     def _get_camera_headers(self) -> dict[str, str]:
@@ -551,8 +839,8 @@ class NestClient:
         if key == "irled_enabled":
             api_value = "auto_on" if value else "always_off"
         elif key == "status_led_enabled":
-            # 0=auto, 1=off, 2=on. We map enabled to "on".
-            api_value = "2" if value else "1"
+            # 0=auto, 1=low, 2=high. We map enabled to "auto" (0).
+            api_value = "0" if value else "1"
 
         camera_uuid = device.object_key.split(".")[1]
         payload = f"uuid={camera_uuid}&{api_key}={api_value}"
@@ -572,9 +860,232 @@ class NestClient:
             if result.get("status") != 0:
                 raise PynestException(f"API error setting camera property: {result}")
 
+    async def _async_set_protobuf_camera_property(
+        self,
+        device: NestCamera,
+        key: str,
+        value: bool,
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Set properties for a protobuf-enabled Camera."""
+        _LOGGER.debug(
+            "Setting protobuf camera property for %s: %s=%s",
+            device.object_key,
+            key,
+            value,
+        )
+
+        if key == "streaming_enabled":
+            # Set Recording Toggle
+            target_state = (
+                nest_camera_pb2.CameraState.CAMERA_ON
+                if value
+                else nest_camera_pb2.CameraState.CAMERA_OFF
+            )
+            now = Timestamp()
+            now.GetCurrentTime()
+
+            recording_toggle_settings_trait = _get_trait_copy(
+                current_traits, nest_camera_pb2.RecordingToggleSettingsTrait
+            )
+            recording_toggle_settings_trait.targetCameraState = target_state
+            recording_toggle_settings_trait.changeModeReason = 2
+            recording_toggle_settings_trait.settingsUpdated.CopyFrom(now)
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                recording_toggle_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="recording_toggle_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        elif key == "indoor_chime_enabled":
+            # Set Doorbell Chime
+            doorbell_indoor_chime_settings_trait = _get_trait_copy(
+                current_traits, nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait
+            )
+            doorbell_indoor_chime_settings_trait.chimeEnabled = value
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                doorbell_indoor_chime_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="doorbell_indoor_chime_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        elif key == "audio_enabled":
+            # Set Microphone
+            microphone_settings_trait = _get_trait_copy(
+                current_traits, nest_audio_pb2.MicrophoneSettingsTrait
+            )
+            microphone_settings_trait.enableMicrophone = value
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                microphone_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="microphone_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+    async def _async_set_protobuf_protect_property(
+        self,
+        device: NestProtect,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Set properties for a protobuf-enabled Nest Protect."""
+        _LOGGER.debug(
+            "Setting protobuf protect property for %s: %s", device.object_key, data
+        )
+
+        if "ntp_green_led_enable" in data:
+            nighttime_promise_settings_trait = _get_trait_copy(
+                current_traits, nest_protect_pb2.NightTimePromiseSettingsTrait
+            )
+            nighttime_promise_settings_trait.greenLedEnabled = data[
+                "ntp_green_led_enable"
+            ]
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                nighttime_promise_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="night_time_promise_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        # These must be sent together to avoid overwriting the other with False
+        if "heads_up_enable" in data or "steam_detection_enable" in data:
+            safety_alarm_settings_trait = _get_trait_copy(
+                current_traits, nest_safety_pb2.SafetyAlarmSettingsTrait
+            )
+
+            if "heads_up_enable" in data:
+                safety_alarm_settings_trait.headsUpEnabled = data["heads_up_enable"]
+            if "steam_detection_enable" in data:
+                safety_alarm_settings_trait.steamDetectionEnabled = data[
+                    "steam_detection_enable"
+                ]
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                safety_alarm_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="safety_alarm_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        # Handles both Enable (via triggers) and Brightness (via brightnessDiscrete)
+        # Updates are merged so changing one preserves the other.
+        if "night_light_enable" in data or "night_light_brightness" in data:
+            # We must use cached trait state to correctly set both fields
+            enhanced_pathlight_settings_trait = _get_trait_copy(
+                current_traits, nest_ui_pb2.EnhancedPathlightSettingsTrait
+            )
+
+            # --- Brightness Logic ---
+            # If brightness is provided in update, use it. Otherwise, rely on existing trait value.
+            if "night_light_brightness" in data:
+                target_brightness = data["night_light_brightness"]
+                brightness_enum = nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_BRIGHTNESS_DISCRETE_LOW
+                if target_brightness == 2:
+                    brightness_enum = nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_BRIGHTNESS_DISCRETE_MEDIUM
+                elif target_brightness == 3:
+                    brightness_enum = nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_BRIGHTNESS_DISCRETE_HIGH
+                enhanced_pathlight_settings_trait.brightnessDiscrete = brightness_enum
+
+            # --- Enable/Trigger Logic ---
+            if "night_light_enable" in data:
+                target_enable = data["night_light_enable"]
+                if target_enable:
+                    # To enable, we set triggers. We start by clearing any existing.
+                    enhanced_pathlight_settings_trait.triggers.clear()
+
+                    # Standard Trigger (Darkness + Motion + 10m Timeout)
+                    t1 = nest_ui_pb2.EnhancedPathlightSettingsTrait.PathlightTrigger(
+                        activationConditions=[
+                            nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_CONDITION_DARKNESS,
+                            nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_CONDITION_MOTION,
+                        ],
+                        timeout=Duration(seconds=600),
+                    )
+                    enhanced_pathlight_settings_trait.triggers[1].CopyFrom(t1)
+
+                    # Wired Trigger (Darkness + Motion + Line Power)
+                    # Use device property to check if wired
+                    if getattr(device, "line_power_present", False):
+                        t0 = nest_ui_pb2.EnhancedPathlightSettingsTrait.PathlightTrigger(
+                            activationConditions=[
+                                nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_CONDITION_DARKNESS,
+                                nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_CONDITION_MOTION,
+                                nest_ui_pb2.EnhancedPathlightSettingsTrait.PATHLIGHT_CONDITION_LINE_POWER,
+                            ]
+                        )
+                        enhanced_pathlight_settings_trait.triggers[0].CopyFrom(t0)
+                else:
+                    # To disable, clear triggers
+                    enhanced_pathlight_settings_trait.triggers.clear()
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                enhanced_pathlight_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="enhanced_pathlight_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
     async def _async_send_command(
         self, device: NestDevice, command: v1_pb2.ResourceCommand
-    ) -> None:
+    ) -> v1_pb2.SendCommandResponse:
         """Send a command via the protobuf API."""
         send_command_req = v1_pb2.SendCommandRequest(
             resourceRequest=v1_pb2.ResourceRequest(
@@ -593,11 +1104,16 @@ class NestClient:
         ) as response:
             if not response.ok:
                 raise PynestException(f"Error sending command: {await response.text()}")
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                response_bytes = await response.read()
-                send_command_resp = v1_pb2.SendCommandResponse()
-                send_command_resp.ParseFromString(response_bytes)
-                _LOGGER.debug("SendCommand response: %s", send_command_resp)
+
+            response_bytes = await response.read()
+            send_command_resp = v1_pb2.SendCommandResponse()
+            send_command_resp.ParseFromString(response_bytes)
+            if send_command_resp.status.code != 0:
+                raise PynestException(
+                    f"Command failed with code {send_command_resp.status.code}: {send_command_resp.status.message}"
+                )
+            _LOGGER.debug("SendCommand response: %s", send_command_resp)
+            return send_command_resp
 
     async def _async_update_trait_state(
         self, trait_update_request: v1_pb2.TraitUpdateStateRequest
@@ -606,6 +1122,7 @@ class NestClient:
         batch_update_req = v1_pb2.BatchUpdateStateRequest(
             batchUpdateStateRequest=[trait_update_request]
         )
+        _LOGGER.debug("BatchUpdate request: %s", batch_update_req)
         url = f"https://{self._environment.grpc_host}{_BATCH_UPDATE_ENDPOINT}"
 
         async with self._session.post(
@@ -618,14 +1135,20 @@ class NestClient:
                 raise PynestException(
                     f"Error updating trait state: {await response.text()}"
                 )
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                response_bytes = await response.read()
-                batch_update_resp = v1_pb2.BatchUpdateStateResponse()
-                batch_update_resp.ParseFromString(response_bytes)
-                _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
+            response_bytes = await response.read()
+            batch_update_resp = v1_pb2.BatchUpdateStateResponse()
+            if batch_update_resp.status.code != 0:
+                raise PynestException(
+                    f"Command failed with code {batch_update_resp.status.code}: {batch_update_resp.status.message}"
+                )
+            batch_update_resp.ParseFromString(response_bytes)
+            _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
 
     async def _async_set_lock_property(
-        self, device: NestLock, data: dict[str, Any]
+        self,
+        device: NestLock,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
     ) -> None:
         """Set properties for a Nest x Yale Lock."""
         if "bolt_locked" in data:
@@ -647,14 +1170,14 @@ class NestClient:
             )
             await self._async_send_command(device, command)
         if "auto_relock_duration" in data or "auto_relock_on" in data:
-            state_proto = weave_security_pb2.BoltLockSettingsTrait(
-                autoRelockOn=data.get("auto_relock_on", device.auto_relock_on),
-                autoRelockDuration=Duration(
-                    seconds=data.get(
-                        "auto_relock_duration", device.auto_relock_duration
-                    )
-                ),
+            state_proto = _get_trait_copy(
+                current_traits, weave_security_pb2.BoltLockSettingsTrait
             )
+            if "auto_relock_on" in data:
+                state_proto.autoRelockOn = data["auto_relock_on"]
+            if "auto_relock_duration" in data:
+                state_proto.autoRelockDuration.seconds = data["auto_relock_duration"]
+
             any_proto = google.protobuf.any_pb2.Any()
             any_proto.Pack(state_proto, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX)
 
@@ -668,21 +1191,417 @@ class NestClient:
             )
             await self._async_update_trait_state(request)
 
+    async def _set_proto_thermostat_temperature(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        now: Timestamp,
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Handle temperature updates for protobuf thermostat."""
+        # Check if we are in Eco Mode. If so, we must update EcoModeSettingsTrait
+        if (
+            device.hvac_mode
+            in (ThermostatHvacMode.OFF, "eco", "ecoheat", "ecocool", "ecorange")
+            or device.is_eco_mode
+        ):
+            # We are setting Eco temperatures
+            eco_mode_settings_trait = _get_trait_copy(
+                current_traits, nest_hvac_pb2.EcoModeSettingsTrait
+            )
+
+            target_val = data.get("target_temperature")
+
+            if target_val:
+                eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
+                eco_mode_settings_trait.ecoTemperatureCool.value.value = target_val
+
+            if "target_temperature_low" in data:
+                eco_mode_settings_trait.ecoTemperatureHeat.value.value = data[
+                    "target_temperature_low"
+                ]
+            if "target_temperature_high" in data:
+                eco_mode_settings_trait.ecoTemperatureCool.value.value = data[
+                    "target_temperature_high"
+                ]
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                eco_mode_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="eco_mode_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+            return
+
+        # Standard HVAC Mode handling (non-Eco)
+        target_temperature_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
+        )
+
+        setpoint_type = (
+            nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+        )
+        if device.hvac_mode == ThermostatHvacMode.COOL:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+        elif device.hvac_mode == ThermostatHvacMode.RANGE:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+
+        # Pre-fill heating/cooling targets from current state to avoid resetting un-updated values
+        heating_target = (
+            target_temperature_settings_trait.targetTemperature.heatingTarget.value
+            if target_temperature_settings_trait.HasField("targetTemperature")
+            else 0.0
+        )
+        cooling_target = (
+            target_temperature_settings_trait.targetTemperature.coolingTarget.value
+            if target_temperature_settings_trait.HasField("targetTemperature")
+            else 0.0
+        )
+
+        temp_val = data.get("target_temperature")
+
+        if (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+        ):
+            if temp_val is not None:
+                heating_target = temp_val
+        elif (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+        ):
+            if temp_val is not None:
+                cooling_target = temp_val
+        elif (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+        ):
+            val_low = data.get("target_temperature_low")
+            if val_low is not None:
+                heating_target = val_low
+
+            val_high = data.get("target_temperature_high")
+            if val_high is not None:
+                cooling_target = val_high
+
+        # Construct Actor Info
+        actor_info = nest_hvac_pb2.HvacActor.HvacActorStruct(
+            method=nest_hvac_pb2.HvacActor.HvacActorMethod.HVAC_ACTOR_METHOD_IOS,
+            originator=weave_common_pb2.ResourceId(resourceId=device.object_key),
+            timeOfAction=now,
+        )
+
+        target_temperature_settings_trait.targetTemperature.setpointType = setpoint_type
+        target_temperature_settings_trait.targetTemperature.heatingTarget.value = (
+            heating_target
+        )
+        target_temperature_settings_trait.targetTemperature.coolingTarget.value = (
+            cooling_target
+        )
+        target_temperature_settings_trait.targetTemperature.currentActorInfo.CopyFrom(
+            actor_info
+        )
+
+        any_proto = google.protobuf.any_pb2.Any()
+        any_proto.Pack(
+            target_temperature_settings_trait,
+            type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+        )
+
+        req = v1_pb2.TraitUpdateStateRequest(
+            traitRequest=v1_pb2.TraitRequest(
+                resourceId=device.object_key,
+                traitLabel="target_temperature_settings",
+                requestId=str(uuid.uuid4()),
+            ),
+            state=any_proto,
+        )
+        await self._async_update_trait_state(req)
+
+    async def _set_proto_thermostat_hvac_mode(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        now: Timestamp,
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Handle HVAC mode updates for protobuf thermostat."""
+        mode = data["hvac_mode"]
+        enabled = True
+        setpoint_type = (
+            nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+        )
+
+        if mode == ThermostatHvacMode.OFF:
+            enabled = False
+        elif mode == ThermostatHvacMode.HEAT:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+        elif mode == ThermostatHvacMode.COOL:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+        elif mode == ThermostatHvacMode.RANGE:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+
+        actor_info = nest_hvac_pb2.HvacActor.HvacActorStruct(
+            method=nest_hvac_pb2.HvacActor.HvacActorMethod.HVAC_ACTOR_METHOD_IOS,
+            originator=weave_common_pb2.ResourceId(resourceId=device.object_key),
+            timeOfAction=now,
+        )
+
+        target_temperature_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
+        )
+        target_temperature_settings_trait.enabled.value = enabled
+        if enabled:
+            target_temperature_settings_trait.targetTemperature.setpointType = (
+                setpoint_type
+            )
+        target_temperature_settings_trait.targetTemperature.currentActorInfo.CopyFrom(
+            actor_info
+        )
+
+        any_proto = google.protobuf.any_pb2.Any()
+        any_proto.Pack(
+            target_temperature_settings_trait,
+            type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+        )
+
+        req = v1_pb2.TraitUpdateStateRequest(
+            traitRequest=v1_pb2.TraitRequest(
+                resourceId=device.object_key,
+                traitLabel="target_temperature_settings",
+                requestId=str(uuid.uuid4()),
+            ),
+            state=any_proto,
+        )
+        await self._async_update_trait_state(req)
+
+    async def _set_proto_thermostat_fan(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        now: Timestamp,
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Handle fan updates for protobuf thermostat."""
+        # Determine if fan should be on
+        timeout_end = data.get("fan_timer_timeout", 0)
+        is_on = timeout_end > time.time()
+
+        speed_str = data.get(
+            "fan_timer_speed", f"stage{device.fan_timer_speed}"
+        )  # e.g. "stage1"
+        speed_val = 1
+        if speed_str.startswith("stage"):
+            with contextlib.suppress(ValueError):
+                speed_val = int(speed_str.replace("stage", ""))
+
+        speed_enum = (
+            nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE1
+        )
+        if speed_val == 2:
+            speed_enum = (
+                nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE2
+            )
+        elif speed_val == 3:
+            speed_enum = (
+                nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE3
+            )
+
+        timer_end_ts = Timestamp()
+        if is_on:
+            timer_end_ts.FromSeconds(timeout_end)
+        else:
+            timer_end_ts.FromSeconds(0)
+
+        fan_control_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.FanControlSettingsTrait
+        )
+        fan_control_settings_trait.timerEnd.CopyFrom(timer_end_ts)
+        fan_control_settings_trait.timerSpeed = speed_enum
+
+        any_proto = google.protobuf.any_pb2.Any()
+        any_proto.Pack(
+            fan_control_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+        )
+
+        req = v1_pb2.TraitUpdateStateRequest(
+            traitRequest=v1_pb2.TraitRequest(
+                resourceId=device.object_key,
+                traitLabel="fan_control_settings",
+                requestId=str(uuid.uuid4()),
+            ),
+            state=any_proto,
+        )
+        await self._async_update_trait_state(req)
+
+    async def _async_set_protobuf_thermostat_property(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
+    ) -> None:
+        """Set properties for a protobuf-enabled Nest Thermostat."""
+        _LOGGER.debug(
+            "Setting protobuf thermostat property for %s: %s", device.object_key, data
+        )
+
+        now = Timestamp()
+        now.GetCurrentTime()
+
+        if (
+            "target_temperature" in data
+            or "target_temperature_low" in data
+            or "target_temperature_high" in data
+        ):
+            await self._set_proto_thermostat_temperature(
+                device, data, now, current_traits
+            )
+
+        # Handle Dehumidifier
+        if "dehumidifier_state" in data:
+            humidity_control_settings_trait = _get_trait_copy(
+                current_traits, nest_hvac_pb2.HumidityControlSettingsTrait
+            )
+            humidity_control_settings_trait.dehumidifierTargetHumidity.enabled = data[
+                "dehumidifier_state"
+            ]
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                humidity_control_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="humidity_control_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        # Handle HVAC Mode
+        if "hvac_mode" in data:
+            await self._set_proto_thermostat_hvac_mode(
+                device, data, now, current_traits
+            )
+
+        # Handle Eco Mode (Preset)
+        if "preset_mode" in data:
+            is_eco = data["preset_mode"] == "eco"
+            # We map 'schedule' back to non-eco in HA logic
+            mode_enum = (
+                nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_MANUAL_ECO
+                if is_eco
+                else nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_INACTIVE
+            )
+
+            cmd = v1_pb2.ResourceCommand(traitLabel="eco_mode")
+            cmd.command.Pack(
+                nest_hvac_pb2.EcoModeStateTrait.EcoModeChangeRequest(
+                    ecoMode=mode_enum, setAll=False
+                ),
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+            await self._async_send_command(device, cmd)
+
+        # Handle Temperature Scale
+        if "temperature_scale" in data:
+            scale_val = data["temperature_scale"]
+            scale_enum = (
+                nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
+                if scale_val == "F"
+                else nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_C
+            )
+            trait = _get_trait_copy(current_traits, nest_hvac_pb2.DisplaySettingsTrait)
+            trait.temperatureScale = scale_enum
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX)
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="display_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
+        # Handle Fan Control
+        if "fan_timer_timeout" in data or "fan_timer_speed" in data:
+            await self._set_proto_thermostat_fan(device, data, now, current_traits)
+
+        # Handle Temperature Lock
+        if "temperature_lock" in data:
+            temperature_lock_settings_trait = _get_trait_copy(
+                current_traits, nest_hvac_pb2.TemperatureLockSettingsTrait
+            )
+            temperature_lock_settings_trait.enabled = data["temperature_lock"]
+
+            any_proto = google.protobuf.any_pb2.Any()
+            any_proto.Pack(
+                temperature_lock_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+
+            req = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="temperature_lock_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto,
+            )
+            await self._async_update_trait_state(req)
+
     async def async_set_device_data(
-        self, device: NestDevice, data: dict[str, Any]
+        self,
+        device: NestDevice,
+        data: dict[str, Any],
+        current_traits: dict[str, Any] | None = None,
     ) -> None:
         """Set device data, dispatching to the correct internal method."""
         if isinstance(device, NestCamera):
-            for key, value in data.items():
-                await self._async_set_camera_property(device, key, value)
+            if device.is_protobuf:
+                for key, value in data.items():
+                    await self._async_set_protobuf_camera_property(
+                        device, key, value, current_traits
+                    )
+            else:
+                for key, value in data.items():
+                    await self._async_set_camera_property(device, key, value)
         elif isinstance(device, NestHeatLink):
-            await self._async_set_heatlink_property(device, data)
+            await self._async_set_heatlink_property(device, data, current_traits)
         elif isinstance(device, NestThermostat):
-            await self._async_set_thermostat_property(device.object_key, data)
+            if device.is_protobuf:
+                await self._async_set_protobuf_thermostat_property(
+                    device, data, current_traits
+                )
+            else:
+                await self._async_set_thermostat_property(device.object_key, data)
         elif isinstance(device, NestStructure):
             await self._async_set_structure_property(device, data)
         elif isinstance(device, NestLock):
-            await self._async_set_lock_property(device, data)
+            await self._async_set_lock_property(device, data, current_traits)
+        elif isinstance(device, NestProtect):
+            if device.is_protobuf:
+                await self._async_set_protobuf_protect_property(
+                    device, data, current_traits
+                )
+            else:
+                await self._async_set_generic_property(device.object_key, data)
         else:
             await self._async_set_generic_property(device.object_key, data)
 
@@ -695,11 +1614,26 @@ class NestClient:
             )
             return None
 
-        camera_uuid = device.object_key.split(".")[1]
-        url = urljoin(
-            device.nexus_api_http_server_url,
-            f"/get_image?uuid={camera_uuid}",
-        )
+        if device.is_protobuf:
+            try:
+                upload_req = (
+                    nest_camera_pb2.UploadLiveImageTrait.UploadLiveImageRequest()
+                )
+                command = v1_pb2.ResourceCommand(traitLabel="upload_live_image")
+                command.command.Pack(
+                    upload_req,
+                    type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+                )
+                await self._async_send_command(device, command)
+            except PynestException as err:
+                _LOGGER.warning("Failed to send upload_live_image command: %r", err)
+            url = device.nexus_api_http_server_url
+        else:
+            camera_uuid = device.object_key.split(".")[1]
+            url = urljoin(
+                device.nexus_api_http_server_url,
+                f"/get_image?uuid={camera_uuid}",
+            )
         _LOGGER.debug("Requesting camera snapshot from URL: %s", url)
 
         async with self._session.get(
@@ -761,6 +1695,119 @@ class NestClient:
             device, event_id, height=92, format="jpeg"
         )
 
+    async def _async_get_protobuf_camera_events(
+        self,
+        device: NestCamera,
+        start_time: int | None = None,
+        end_time: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get camera events via Protobuf API."""
+        if start_time is None:
+            start_time = int(time.time() - 60)
+        if end_time is None:
+            end_time = int(time.time())
+
+        # Construct Request
+        start_ts = Timestamp()
+        start_ts.FromSeconds(start_time)
+        end_ts = Timestamp()
+        end_ts.FromSeconds(end_time)
+
+        history_req = nest_history_pb2.CameraObservationHistoryTrait.CameraObservationHistoryRequest(
+            queryStartTime=start_ts,
+            queryEndTime=end_ts,
+        )
+
+        command = v1_pb2.ResourceCommand(traitLabel="camera_observation_history")
+        command.command.Pack(
+            history_req,
+            type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+        )
+
+        try:
+            resp = await self._async_send_command(device, command)
+        except PynestException as err:
+            _LOGGER.warning("Failed to fetch protobuf camera events: %r", err)
+            return []
+
+        events: list[dict[str, Any]] = []
+
+        # Aliases for readability based on history_pb2 structure
+        HistoryTrait = nest_history_pb2.CameraObservationHistoryTrait
+        ResponseClass = HistoryTrait.CameraObservationHistoryResponse
+        # EventType is defined inside CameraEventTimeWindow
+        EventTypeEnum = ResponseClass.CameraEventTimeWindow.EventType
+
+        # Parse Response
+        # Structure: SendCommandResponse -> TraitOperation -> Event (Any) -> CameraObservationHistoryResponse
+        for trait_op in resp.sendCommandResponse:
+            for op in trait_op.traitOperations:
+                if not op.HasField("event") or not op.event.HasField("event"):
+                    continue
+
+                # Unpack the inner event
+                if not op.event.event.Is(ResponseClass.DESCRIPTOR):
+                    continue
+
+                history_response = ResponseClass()
+                op.event.event.Unpack(history_response)
+
+                if not history_response.HasField("cameraEventWindow"):
+                    continue
+
+                # Iterate through events in the time window
+                for cam_event in history_response.cameraEventWindow.cameraEvent:
+                    event_types = []
+                    for t in cam_event.eventType:
+                        try:
+                            t_str = EventTypeEnum.Name(t)
+                            # Map Protobuf enums to legacy API string formats
+                            if t_str == "EVENT_UNFAMILIAR_FACE":
+                                event_types.append("unfamiliar-face")
+                            elif t_str == "EVENT_PERSON_TALKING":
+                                event_types.append("personHeard")
+                            elif t_str == "EVENT_DOG_BARKING":
+                                event_types.append("dogBarking")
+                            elif t_str.startswith("EVENT_"):
+                                event_types.append(t_str[6:].lower())
+                            else:
+                                event_types.append(t_str.lower())
+                        except ValueError:
+                            continue
+
+                    if not event_types:
+                        continue
+
+                    # Convert Timestamp to float seconds
+                    start_t = cam_event.startTime.seconds + (
+                        cam_event.startTime.nanos / 1e9
+                    )
+                    end_t = cam_event.endTime.seconds + (cam_event.endTime.nanos / 1e9)
+
+                    # Map zone indices
+                    zone_ids = [
+                        z.zoneIndex
+                        for z in cam_event.activityZone
+                        if z.zoneIndex is not None
+                    ]
+                    # If generic motion without specific zone, default to zone 1
+                    if not zone_ids:
+                        zone_ids = [1]
+
+                    events.append(
+                        {
+                            "id": cam_event.eventId,
+                            "start_time": start_t,
+                            "end_time": end_t,
+                            "types": event_types,
+                            "zone_ids": zone_ids,
+                        }
+                    )
+
+        # Sort by start_time descending to match legacy API behavior
+        events.sort(key=lambda x: x["start_time"], reverse=True)
+        return events
+
     async def async_get_camera_events(
         self,
         device: NestCamera,
@@ -769,6 +1816,11 @@ class NestClient:
         types: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get camera events from the cuepoint API."""
+        if device.is_protobuf:
+            return await self._async_get_protobuf_camera_events(
+                device, start_time, end_time
+            )
+
         if not device.nexus_api_http_server_url:
             return []
 
@@ -803,6 +1855,10 @@ class NestClient:
 
     async def async_get_camera_properties(self, device: NestCamera) -> dict[str, Any]:
         """Get camera properties from the API."""
+        # Protobuf devices update properties via traits, and don't use the legacy quartz key format
+        if device.is_protobuf or not device.object_key.startswith("quartz."):
+            return {}
+
         camera_uuid = device.object_key.split(".")[1]
         url = f"https://webapi.{self._environment.camera_host}/api/cameras.get_with_properties"
         params = {"uuid": camera_uuid}
@@ -836,8 +1892,8 @@ class NestClient:
                 v2_pb2.CONFIRMED,
             ],
             traitTypeParams=[
-                v2_pb2.TraitTypeObserveParams(traitType=trait_type)
-                for trait_type in _TRAIT_TYPE_TO_CLASS_MAP
+                v2_pb2.TraitTypeObserveParams(traitType=trait.DESCRIPTOR.full_name)
+                for trait in self._observe_traits
             ],
         )
         request_payload_bytes = observe_req.SerializeToString()
@@ -884,8 +1940,11 @@ class NestClient:
                             updates: dict[str, dict[str, Any]] = {}
                             for state in inner_response.traitStates:
                                 type_url = state.patch.values.type_url
+                                descriptor_full_name = type_url.removeprefix(
+                                    _NESTLABS_TYPE_URL_PREFIX
+                                )
                                 target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(
-                                    type_url.removeprefix(_NESTLABS_TYPE_URL_PREFIX)
+                                    descriptor_full_name
                                 )
                                 if not target_class:
                                     _LOGGER.debug(
@@ -898,11 +1957,11 @@ class NestClient:
                                 state.patch.values.Unpack(unpacked_message)
 
                                 resource_id = state.traitId.resourceId
-                                trait_label = state.traitId.traitLabel
-
                                 if resource_id not in updates:
                                     updates[resource_id] = {}
-                                updates[resource_id][trait_label] = unpacked_message
+                                updates[resource_id][descriptor_full_name] = (
+                                    unpacked_message
+                                )
 
                             if updates:
                                 yield updates

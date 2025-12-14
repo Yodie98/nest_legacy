@@ -29,8 +29,25 @@ from .models import (
     NestThermostat,
     NestWiredProtect,
 )
+from .protobuf_gen.nest.trait import (
+    audio_pb2 as nest_audio_pb2,
+    hvac_pb2 as nest_hvac_pb2,
+    located_pb2 as nest_located_pb2,
+    occupancy_pb2 as nest_occupancy_pb2,
+    safety_pb2 as nest_safety_pb2,
+    sensor_pb2 as nest_sensor_pb2,
+    structure_pb2 as nest_structure_pb2,
+    ui_pb2 as nest_ui_pb2,
+)
+from .protobuf_gen.nest.trait.product import (
+    camera_pb2 as nest_camera_pb2,
+    doorbell_pb2 as nest_doorbell_pb2,
+    protect_pb2 as nest_protect_pb2,
+)
 from .protobuf_gen.weave.trait import (
+    description_pb2 as weave_description_pb2,
     heartbeat_pb2 as weave_heartbeat_pb2,
+    power_pb2 as weave_power_pb2,
     security_pb2 as weave_security_pb2,
 )
 
@@ -49,6 +66,16 @@ def _scale_value(
     return ((value - source_min) * (target_max - target_min)) / (
         source_max - source_min
     ) + target_min
+
+
+def _get_protobuf_location(traits: dict[str, Any]) -> str | None:
+    """Extract location from protobuf traits."""
+    loc_trait: nest_located_pb2.DeviceLocatedSettingsTrait | None = traits.get(
+        nest_located_pb2.DeviceLocatedSettingsTrait.DESCRIPTOR.full_name
+    )
+    if not loc_trait:
+        return None
+    return loc_trait.whereLabel.literal or loc_trait.fixtureNameLabel.literal
 
 
 def _milli_volt_to_percentage(state: int) -> float:
@@ -120,7 +147,9 @@ class NestParser:
                 if key.startswith("topaz."):
                     device = self._parse_protect(key, value, raw_data, wheres_map)
                 elif key.startswith("device."):
-                    if device := self._parse_thermostat(key, value, raw_data, wheres_map):
+                    if device := self._parse_thermostat(
+                        key, value, raw_data, wheres_map
+                    ):
                         thermostats.append(device)
                 elif key.startswith("kryptonite."):
                     device = self._parse_tempsensor(key, value, wheres_map)
@@ -130,15 +159,42 @@ class NestParser:
                     device = self._parse_structure(key, value, raw_data)
                 elif key.startswith("DEVICE_"):
                     # Handle protobuf devices
-                    if "bolt_lock" in value:
+                    if weave_security_pb2.BoltLockTrait.DESCRIPTOR.full_name in value:
                         device = self._parse_protobuf_lock(key, value)
+                    elif nest_hvac_pb2.HvacControlTrait.DESCRIPTOR.full_name in value:
+                        if device := self._parse_protobuf_thermostat(key, value):
+                            thermostats.append(device)
+                    elif (
+                        nest_sensor_pb2.SmokeTrait.DESCRIPTOR.full_name in value
+                        or nest_sensor_pb2.CarbonMonoxideTrait.DESCRIPTOR.full_name
+                        in value
+                        or nest_safety_pb2.SafetyAlarmSmokeTrait.DESCRIPTOR.full_name
+                        in value
+                    ):
+                        device = self._parse_protobuf_protect(key, value)
+                    elif (
+                        nest_camera_pb2.StreamingProtocolTrait.DESCRIPTOR.full_name
+                        in value
+                    ):
+                        device = self._parse_protobuf_camera(key, value)
+                    elif (
+                        nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name in value
+                        and nest_hvac_pb2.HvacControlTrait.DESCRIPTOR.full_name
+                        not in value
+                        and nest_sensor_pb2.HumidityTrait.DESCRIPTOR.full_name
+                        not in value
+                    ):
+                        device = self._parse_protobuf_sensor(key, value)
+                    elif (
+                        nest_structure_pb2.StructureInfoTrait.DESCRIPTOR.full_name
+                        in value
+                    ):
+                        device = self._parse_protobuf_structure(key, value)
 
                 if device:
                     devices.append(device)
             except (KeyError, TypeError, ValueError) as e:
-                _LOGGER.warning(
-                    "Skipping device %s due to a parsing error: %s", key, e
-                )
+                _LOGGER.warning("Skipping device %s due to a parsing error: %s", key, e)
 
         # Second pass to create derived devices like Heat Link
         devices.extend(
@@ -377,10 +433,12 @@ class NestParser:
             target_temperature_low=target_low,
             target_temperature_high=target_high,
             current_humidity=data.get("current_humidity"),
+            target_humidity=data.get("target_humidity"),
             hvac_state=hvac_state,
             hvac_mode=hvac_mode,
             is_eco_mode=is_eco,
             leaf=data.get("leaf", False),
+            temperature_lock=data.get("temperature_lock", False),
             can_heat=data.get("can_heat", False),
             can_cool=data.get("can_cool", False),
             has_fan=data.get("has_fan", False),
@@ -389,6 +447,8 @@ class NestParser:
             fan_max_speed=fan_max_speed,
             fan_duration=data.get("fan_duration", 900),
             fan_timer_timeout=data.get("fan_timer_timeout", 0),
+            has_dehumidifier=data.get("has_dehumidifier", False),
+            dehumidifier_state=data.get("dehumidifier_state", False),
             occupancy=occupancy,
             battery_level=_scale_value(data.get("battery_level", 0), 3.6, 3.9, 0, 100),
             has_hot_water_control=data.get("has_hot_water_control", False),
@@ -498,38 +558,30 @@ class NestParser:
         traits: dict[str, Any],
     ) -> NestLock | None:
         """Parse a Nest x Yale Lock from protobuf data."""
-        bolt_lock_trait = traits.get("bolt_lock")
+        bolt_lock_trait: weave_security_pb2.BoltLockTrait | None = traits.get(
+            weave_security_pb2.BoltLockTrait.DESCRIPTOR.full_name
+        )
         if not bolt_lock_trait:
             return None
 
         # Determine bolt state
-        bolt_state = LockBoltState.UNKNOWN
-        if (
-            bolt_lock_trait.actuatorState
-            == weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_LOCKING
-        ):
-            bolt_state = LockBoltState.LOCKING
-        elif (
-            bolt_lock_trait.actuatorState
-            == weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_UNLOCKING
-        ):
-            bolt_state = LockBoltState.UNLOCKING
-        elif bolt_lock_trait.actuatorState in (
-            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_UNLOCKING,
-            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_LOCKING,
-            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_OTHER,
-        ):
-            bolt_state = LockBoltState.JAMMED
-        elif (
-            bolt_lock_trait.lockedState
-            == weave_security_pb2.BoltLockTrait.BoltLockedState.BOLT_LOCKED_STATE_LOCKED
-        ):
-            bolt_state = LockBoltState.LOCKED
-        elif (
-            bolt_lock_trait.lockedState
-            == weave_security_pb2.BoltLockTrait.BoltLockedState.BOLT_LOCKED_STATE_UNLOCKED
-        ):
-            bolt_state = LockBoltState.UNLOCKED
+        actuator_state_map = {
+            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_LOCKING: LockBoltState.LOCKING,
+            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_UNLOCKING: LockBoltState.UNLOCKING,
+            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_UNLOCKING: LockBoltState.JAMMED,
+            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_LOCKING: LockBoltState.JAMMED,
+            weave_security_pb2.BoltLockTrait.BoltActuatorState.BOLT_ACTUATOR_STATE_JAMMED_OTHER: LockBoltState.JAMMED,
+        }
+        locked_state_map = {
+            weave_security_pb2.BoltLockTrait.BoltLockedState.BOLT_LOCKED_STATE_LOCKED: LockBoltState.LOCKED,
+            weave_security_pb2.BoltLockTrait.BoltLockedState.BOLT_LOCKED_STATE_UNLOCKED: LockBoltState.UNLOCKED,
+        }
+
+        # Check actuator state first (higher priority), then locked state
+        bolt_state = actuator_state_map.get(
+            bolt_lock_trait.actuatorState,
+            locked_state_map.get(bolt_lock_trait.lockedState, LockBoltState.UNKNOWN),
+        )
 
         # Determine bolt actor
         actor_map = {
@@ -548,14 +600,20 @@ class NestParser:
         )
 
         # Extract other properties from traits
-        identity_trait = traits.get("device_identity")
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
         serial_number = identity_trait.serialNumber if identity_trait else key
         software_version = identity_trait.softwareVersion if identity_trait else None
 
-        label_trait = traits.get("label")
+        label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
+            weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
+        )
         name = label_trait.label if label_trait and label_trait.label else "Lock"
 
-        liveness_trait = traits.get("liveness")
+        liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
+            weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
+        )
         online = (
             liveness_trait.status
             == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
@@ -563,14 +621,18 @@ class NestParser:
             else True
         )
 
-        battery_trait = traits.get("battery_power_source")
+        battery_trait: weave_power_pb2.BatteryPowerSourceTrait | None = traits.get(
+            weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
+        )
         battery_level = (
-            _scale_value(battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100)
+            100 * battery_trait.remaining.remainingPercent.value
             if battery_trait
             else 0.0
         )
 
-        tamper_trait = traits.get("tamper")
+        tamper_trait: weave_security_pb2.TamperTrait | None = traits.get(
+            weave_security_pb2.TamperTrait.DESCRIPTOR.full_name
+        )
         tampered = (
             tamper_trait.tamperState
             == weave_security_pb2.TamperTrait.TamperState.TAMPER_STATE_TAMPERED
@@ -578,12 +640,16 @@ class NestParser:
             else False
         )
 
-        settings_trait = traits.get("bolt_lock_settings")
+        settings_trait: weave_security_pb2.BoltLockSettingsTrait | None = traits.get(
+            weave_security_pb2.BoltLockSettingsTrait.DESCRIPTOR.full_name
+        )
         auto_relock_duration = (
             settings_trait.autoRelockDuration.seconds if settings_trait else 0
         )
 
-        caps_trait = traits.get("bolt_lock_capabilities")
+        caps_trait: weave_security_pb2.BoltLockCapabilitiesTrait | None = traits.get(
+            weave_security_pb2.BoltLockCapabilitiesTrait.DESCRIPTOR.full_name
+        )
         max_auto_relock_duration = (
             caps_trait.maxAutoRelockDuration.seconds if caps_trait else 300
         )
@@ -603,6 +669,784 @@ class NestParser:
             auto_relock_on=settings_trait.autoRelockOn if settings_trait else False,
             auto_relock_duration=auto_relock_duration,
             max_auto_relock_duration=max_auto_relock_duration,
+            is_protobuf=True,
+        )
+
+    def _parse_proto_targets_and_mode(
+        self, traits: dict[str, Any], is_eco_mode: bool
+    ) -> tuple[float | None, float | None, float | None, ThermostatHvacMode]:
+        """Extract target temperatures and HVAC mode from traits."""
+        target_temp = None
+        target_low = None
+        target_high = None
+        hvac_mode = ThermostatHvacMode.OFF
+
+        # Handle Eco Mode Settings to get actual target temps when in Eco
+        if is_eco_mode:
+            eco_settings: nest_hvac_pb2.EcoModeSettingsTrait | None = traits.get(
+                nest_hvac_pb2.EcoModeSettingsTrait.DESCRIPTOR.full_name
+            )
+            if eco_settings:
+                target_low = eco_settings.ecoTemperatureHeat.value.value
+                target_high = eco_settings.ecoTemperatureCool.value.value
+
+                # Determine "effective" target based on active flags if available or just overrides
+                if (
+                    eco_settings.ecoTemperatureHeat.enabled
+                    and not eco_settings.ecoTemperatureCool.enabled
+                ):
+                    target_temp = target_low
+                elif (
+                    not eco_settings.ecoTemperatureHeat.enabled
+                    and eco_settings.ecoTemperatureCool.enabled
+                ):
+                    target_temp = target_high
+                else:
+                    target_temp = (target_low + target_high) / 2
+            return target_temp, target_low, target_high, hvac_mode
+
+        # Standard Target Temperature
+        target_temp_trait: nest_hvac_pb2.TargetTemperatureSettingsTrait | None = (
+            traits.get(
+                nest_hvac_pb2.TargetTemperatureSettingsTrait.DESCRIPTOR.full_name
+            )
+        )
+        if target_temp_trait and target_temp_trait.HasField("targetTemperature"):
+            tt = target_temp_trait.targetTemperature
+            if (
+                tt.setpointType
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+            ):
+                target_temp = tt.heatingTarget.value
+                hvac_mode = ThermostatHvacMode.HEAT
+            elif (
+                tt.setpointType
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+            ):
+                target_temp = tt.coolingTarget.value
+                hvac_mode = ThermostatHvacMode.COOL
+            elif (
+                tt.setpointType
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+            ):
+                target_low = tt.heatingTarget.value
+                target_high = tt.coolingTarget.value
+                # Calculate middle point for 'target' if needed
+                target_temp = (target_low + target_high) / 2
+                hvac_mode = ThermostatHvacMode.RANGE
+        return target_temp, target_low, target_high, hvac_mode
+
+    def _parse_proto_hvac_state(
+        self, hvac_trait: nest_hvac_pb2.HvacControlTrait
+    ) -> ThermostatHvacState:
+        """Determine HVAC action state from traits."""
+        hvac_state = ThermostatHvacState.OFF
+        if (
+            hvac_trait.hvacState.heatStage1Active
+            or hvac_trait.hvacState.heatStage2Active
+            or hvac_trait.hvacState.heatStage3Active
+            or hvac_trait.hvacState.auxiliaryHeatActive
+            or hvac_trait.hvacState.emergencyHeatActive
+        ):
+            hvac_state = ThermostatHvacState.HEATING
+        elif (
+            hvac_trait.hvacState.coolStage1Active
+            or hvac_trait.hvacState.coolStage2Active
+            or hvac_trait.hvacState.coolStage3Active
+        ):
+            hvac_state = ThermostatHvacState.COOLING
+        return hvac_state
+
+    def _parse_proto_fan(
+        self, traits: dict[str, Any]
+    ) -> tuple[bool, int, int, int, int]:
+        """Extract fan state, timer timeout, speed, duration, and max speed."""
+        fan_trait: nest_hvac_pb2.FanControlSettingsTrait | None = traits.get(
+            nest_hvac_pb2.FanControlSettingsTrait.DESCRIPTOR.full_name
+        )
+        fan_state = (
+            fan_trait.mode
+            == nest_hvac_pb2.FanControlSettingsTrait.FanMode.FAN_MODE_CONTINUOUS_ON
+            if fan_trait
+            else False
+        )
+        fan_timer_timeout = (
+            fan_trait.timerEnd.ToSeconds()
+            if fan_trait and fan_trait.HasField("timerEnd")
+            else 0
+        )
+
+        fan_timer_speed = 1
+        if fan_trait and fan_trait.timerSpeed:
+            if (
+                fan_trait.timerSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE1
+            ):
+                fan_timer_speed = 1
+            elif (
+                fan_trait.timerSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE2
+            ):
+                fan_timer_speed = 2
+            elif (
+                fan_trait.timerSpeed
+                == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE3
+            ):
+                fan_timer_speed = 3
+
+        fan_duration = (
+            fan_trait.timerDuration.ToSeconds()
+            if fan_trait and fan_trait.HasField("timerDuration")
+            else 900
+        )
+
+        fan_max_speed = 1
+        if fan_timer_speed > 1:
+            fan_max_speed = fan_timer_speed
+        elif (
+            fan_trait
+            and fan_trait.timerSpeed
+            == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE3
+        ):
+            fan_max_speed = 3
+        return (
+            fan_state,
+            fan_timer_timeout,
+            fan_timer_speed,
+            fan_duration,
+            fan_max_speed,
+        )
+
+    def _parse_protobuf_thermostat(
+        self, key: str, traits: dict[str, Any]
+    ) -> NestThermostat | None:
+        """Parse a Nest Thermostat from protobuf data."""
+        hvac_trait: nest_hvac_pb2.HvacControlTrait | None = traits.get(
+            nest_hvac_pb2.HvacControlTrait.DESCRIPTOR.full_name
+        )
+        if not hvac_trait:
+            return None
+
+        # Identity
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
+        serial_number = identity_trait.serialNumber if identity_trait else key
+        software_version = identity_trait.softwareVersion if identity_trait else None
+
+        label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
+            weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
+        )
+        name = label_trait.label if label_trait and label_trait.label else "Thermostat"
+
+        liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
+            weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
+        )
+        online = (
+            liveness_trait.status
+            == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
+            if liveness_trait
+            else True
+        )
+
+        # Temperature
+        temp_trait: nest_sensor_pb2.TemperatureTrait | None = traits.get(
+            nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name
+        )
+        current_temperature = (
+            temp_trait.temperatureValue.temperature.value
+            if temp_trait and temp_trait.HasField("temperatureValue")
+            else None
+        )
+
+        # Capabilities (Equipment Capabilities)
+        capabilities_trait: nest_hvac_pb2.HvacEquipmentCapabilitiesTrait | None = (
+            traits.get(
+                nest_hvac_pb2.HvacEquipmentCapabilitiesTrait.DESCRIPTOR.full_name
+            )
+        )
+        can_heat = True
+        can_cool = True
+        has_dehumidifier = False
+        if capabilities_trait:
+            can_heat = (
+                capabilities_trait.hasStage1Heat
+                or capabilities_trait.hasStage2Heat
+                or capabilities_trait.hasStage3Heat
+            )
+            can_cool = (
+                capabilities_trait.hasStage1Cool
+                or capabilities_trait.hasStage2Cool
+                or capabilities_trait.hasStage3Cool
+            )
+            has_dehumidifier = capabilities_trait.hasDehumidifier
+
+        # Eco Mode
+        eco_trait: nest_hvac_pb2.EcoModeStateTrait | None = traits.get(
+            nest_hvac_pb2.EcoModeTrait.DESCRIPTOR.full_name
+        )
+        is_eco_mode = (
+            eco_trait.ecoMode
+            != nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_INACTIVE
+            if eco_trait
+            else False
+        )
+
+        # Target Temperature & Mode (using helper)
+        (
+            target_temperature,
+            target_temperature_low,
+            target_temperature_high,
+            hvac_mode,
+        ) = self._parse_proto_targets_and_mode(traits, is_eco_mode)
+
+        # Humidity
+        humidity_trait: nest_sensor_pb2.HumidityTrait | None = traits.get(
+            nest_sensor_pb2.HumidityTrait.DESCRIPTOR.full_name
+        )
+        current_humidity = (
+            int(humidity_trait.humidityValue.humidity.value)
+            if humidity_trait and humidity_trait.HasField("humidityValue")
+            else None
+        )
+
+        # Dehumidifier / Humidity Control
+        humid_ctrl_trait: nest_hvac_pb2.HumidityControlSettingsTrait | None = (
+            traits.get(nest_hvac_pb2.HumidityControlSettingsTrait.DESCRIPTOR.full_name)
+        )
+        dehumidifier_state = False
+        target_humidity = None
+        if humid_ctrl_trait and humid_ctrl_trait.HasField("dehumidifierTargetHumidity"):
+            dehumidifier_state = humid_ctrl_trait.dehumidifierTargetHumidity.enabled
+            if humid_ctrl_trait.dehumidifierTargetHumidity.HasField("value"):
+                target_humidity = humid_ctrl_trait.dehumidifierTargetHumidity.value
+
+        # HVAC State (using helper)
+        hvac_state = self._parse_proto_hvac_state(hvac_trait)
+
+        # Fan (using helper)
+        (
+            fan_state,
+            fan_timer_timeout,
+            fan_timer_speed,
+            fan_duration,
+            fan_max_speed,
+        ) = self._parse_proto_fan(traits)
+
+        # Display Settings (Temp Scale)
+        display_trait: nest_hvac_pb2.DisplaySettingsTrait | None = traits.get(
+            nest_hvac_pb2.DisplaySettingsTrait.DESCRIPTOR.full_name
+        )
+        temperature_scale = TemperatureScale.CELSIUS
+        if display_trait:
+            if (
+                display_trait.temperatureScale
+                == nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
+            ):
+                temperature_scale = TemperatureScale.FAHRENHEIT
+
+        # Temperature Lock Settings
+        lock_trait: nest_hvac_pb2.TemperatureLockSettingsTrait | None = traits.get(
+            nest_hvac_pb2.TemperatureLockSettingsTrait.DESCRIPTOR.full_name
+        )
+        temperature_lock = lock_trait.enabled if lock_trait else False
+
+        # Hot Water / Heat Link Parsing
+        hw_trait: nest_hvac_pb2.HotWaterTrait | None = traits.get(
+            nest_hvac_pb2.HotWaterTrait.DESCRIPTOR.full_name
+        )
+        hw_settings_trait: nest_hvac_pb2.HotWaterSettingsTrait | None = traits.get(
+            nest_hvac_pb2.HotWaterSettingsTrait.DESCRIPTOR.full_name
+        )
+
+        has_hot_water_control = False
+        hot_water_active = False
+        hot_water_boost_time_to_end = 0
+        hot_water_temperature = None
+        current_water_temperature = None
+
+        if hw_trait:
+            has_hot_water_control = True
+            hot_water_active = hw_trait.boilerActive
+            if hw_trait.HasField("temperature"):
+                current_water_temperature = hw_trait.temperature.value
+
+        if hw_settings_trait:
+            if hw_settings_trait.HasField("boostTimerEnd"):
+                hot_water_boost_time_to_end = (
+                    hw_settings_trait.boostTimerEnd.ToSeconds()
+                )
+            if hw_settings_trait.HasField("temperature"):
+                hot_water_temperature = hw_settings_trait.temperature.value
+
+        return NestThermostat(
+            object_key=key,
+            serial_number=serial_number,
+            name=name,
+            model="Thermostat",
+            software_version=software_version,
+            online=online,
+            current_temperature=current_temperature,
+            target_temperature=target_temperature,
+            target_temperature_low=target_temperature_low,
+            target_temperature_high=target_temperature_high,
+            current_humidity=current_humidity,
+            target_humidity=target_humidity,
+            hvac_mode=hvac_mode,
+            hvac_state=hvac_state,
+            is_eco_mode=is_eco_mode,
+            fan_state=fan_state,
+            fan_timer_timeout=fan_timer_timeout,
+            fan_timer_speed=fan_timer_speed,
+            fan_duration=fan_duration,
+            fan_max_speed=fan_max_speed,
+            temperature_scale=temperature_scale,
+            temperature_lock=temperature_lock,
+            can_heat=can_heat,
+            can_cool=can_cool,
+            has_fan=True,
+            is_protobuf=True,
+            has_hot_water_control=has_hot_water_control,
+            heat_link_model="Heat Link" if has_hot_water_control else None,
+            heat_link_serial_number=serial_number if has_hot_water_control else None,
+            heat_link_sw_version=software_version if has_hot_water_control else None,
+            hot_water_active=hot_water_active,
+            hot_water_boost_time_to_end=hot_water_boost_time_to_end,
+            hot_water_temperature=hot_water_temperature,
+            current_water_temperature=current_water_temperature,
+            has_dehumidifier=has_dehumidifier,
+            dehumidifier_state=dehumidifier_state,
+        )
+
+    def _parse_protobuf_protect(
+        self, key: str, traits: dict[str, Any]
+    ) -> NestProtect | None:
+        """Parse a Nest Protect from protobuf data."""
+        smoke_trait: nest_sensor_pb2.SmokeTrait | None = traits.get(
+            nest_sensor_pb2.SmokeTrait.DESCRIPTOR.full_name
+        )
+        co_trait: nest_sensor_pb2.CarbonMonoxideTrait | None = traits.get(
+            nest_sensor_pb2.CarbonMonoxideTrait.DESCRIPTOR.full_name
+        )
+        safety_smoke: nest_safety_pb2.SafetyAlarmSmokeTrait | None = traits.get(
+            nest_safety_pb2.SafetyAlarmSmokeTrait.DESCRIPTOR.full_name
+        )
+        safety_co: nest_safety_pb2.SafetyAlarmCOTrait | None = traits.get(
+            nest_safety_pb2.SafetyAlarmCOTrait.DESCRIPTOR.full_name
+        )
+
+        if not (smoke_trait or co_trait or safety_smoke or safety_co):
+            return None
+
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
+        serial_number = identity_trait.serialNumber if identity_trait else key
+        software_version = identity_trait.softwareVersion if identity_trait else None
+
+        label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
+            weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
+        )
+        name = (
+            label_trait.label if label_trait and label_trait.label else "Nest Protect"
+        )
+
+        liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
+            weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
+        )
+        online = (
+            liveness_trait.status
+            == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
+            if liveness_trait
+            else True
+        )
+
+        location = _get_protobuf_location(traits)
+
+        batt_voltage_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+        )
+        battery_level = (
+            _milli_volt_to_percentage(
+                int(1000 * batt_voltage_trait.batteryValue.batteryVoltage.value)
+            )
+            if batt_voltage_trait
+            else 0.0
+        )
+
+        smoke_status = (
+            safety_smoke.alarmState
+            == nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_ALARM
+            if safety_smoke
+            else False
+        )
+        co_status = (
+            safety_co.alarmState
+            == nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_ALARM
+            if safety_co
+            else False
+        )
+
+        audio_test: nest_protect_pb2.AudioTestTrait | None = traits.get(
+            nest_protect_pb2.AudioTestTrait.DESCRIPTOR.full_name
+        )
+        spk_pass = audio_test.speakerResult.testPassed if audio_test else False
+        buz_pass = audio_test.buzzerResult.testPassed if audio_test else False
+
+        is_wired = weave_power_pb2.PowerSourceTrait.DESCRIPTOR.full_name in traits
+
+        enhanced_pathlight: nest_ui_pb2.EnhancedPathlightSettingsTrait | None = (
+            traits.get(nest_ui_pb2.EnhancedPathlightSettingsTrait.DESCRIPTOR.full_name)
+        )
+
+        night_light_enable = False
+        night_light_brightness = None
+
+        if enhanced_pathlight:
+            # Enabled if triggers list is not empty
+            night_light_enable = bool(enhanced_pathlight.triggers)
+
+            # Map Discrete brightness Enums to Integers (1, 2, 3)
+            # LOW=1, MEDIUM=2, HIGH=3
+            val = enhanced_pathlight.brightnessDiscrete
+            if (
+                val
+                == nest_ui_pb2.EnhancedPathlightSettingsTrait.PathlightBrightnessDiscrete.PATHLIGHT_BRIGHTNESS_DISCRETE_LOW
+            ):
+                night_light_brightness = 1
+            elif (
+                val
+                == nest_ui_pb2.EnhancedPathlightSettingsTrait.PathlightBrightnessDiscrete.PATHLIGHT_BRIGHTNESS_DISCRETE_MEDIUM
+            ):
+                night_light_brightness = 2
+            elif (
+                val
+                == nest_ui_pb2.EnhancedPathlightSettingsTrait.PathlightBrightnessDiscrete.PATHLIGHT_BRIGHTNESS_DISCRETE_HIGH
+            ):
+                night_light_brightness = 3
+
+        # -- SETTINGS PARSING --
+        ntp: nest_protect_pb2.NightTimePromiseSettingsTrait | None = traits.get(
+            nest_protect_pb2.NightTimePromiseSettingsTrait.DESCRIPTOR.full_name
+        )
+        safety_settings: nest_safety_pb2.SafetyAlarmSettingsTrait | None = traits.get(
+            nest_safety_pb2.SafetyAlarmSettingsTrait.DESCRIPTOR.full_name
+        )
+
+        ntp_green_led_enable = ntp.greenLedEnabled if ntp else False
+        heads_up_enable = safety_settings.headsUpEnabled if safety_settings else False
+        steam_detection_enable = (
+            safety_settings.steamDetectionEnabled if safety_settings else False
+        )
+
+        if is_wired:
+            return NestWiredProtect(
+                object_key=key,
+                serial_number=serial_number,
+                location=location,
+                name=name,
+                model="Nest Protect (Wired)",
+                software_version=software_version,
+                online=online,
+                smoke_status=smoke_status,
+                co_status=co_status,
+                battery_level=battery_level,
+                battery_health_state=0,
+                line_power_present=True,
+                night_light_enable=night_light_enable,
+                steam_detection_enable=steam_detection_enable,
+                night_light_brightness=night_light_brightness,
+                component_speaker_test_passed=spk_pass,
+                component_smoke_test_passed=True,
+                component_co_test_passed=True,
+                component_wifi_test_passed=True,
+                component_led_test_passed=True,
+                component_pir_test_passed=True,
+                component_buzzer_test_passed=buz_pass,
+                component_hum_test_passed=True,
+                ntp_green_led_enable=ntp_green_led_enable,
+                heads_up_enable=heads_up_enable,
+                is_protobuf=True,
+            )
+
+        return NestBatteryProtect(
+            object_key=key,
+            serial_number=serial_number,
+            location=location,
+            name=name,
+            model="Nest Protect (Battery)",
+            software_version=software_version,
+            online=online,
+            smoke_status=smoke_status,
+            co_status=co_status,
+            battery_level=battery_level,
+            battery_health_state=0,
+            night_light_enable=night_light_enable,
+            steam_detection_enable=steam_detection_enable,
+            night_light_brightness=night_light_brightness,
+            component_speaker_test_passed=spk_pass,
+            component_smoke_test_passed=True,
+            component_co_test_passed=True,
+            component_wifi_test_passed=True,
+            component_led_test_passed=True,
+            component_pir_test_passed=True,
+            component_buzzer_test_passed=buz_pass,
+            component_hum_test_passed=True,
+            ntp_green_led_enable=ntp_green_led_enable,
+            heads_up_enable=heads_up_enable,
+            is_protobuf=True,
+        )
+
+    def _parse_protobuf_camera(
+        self, key: str, traits: dict[str, Any]
+    ) -> NestCamera | None:
+        """Parse a Nest Camera from protobuf data."""
+        streaming_trait: nest_camera_pb2.StreamingProtocolTrait | None = traits.get(
+            nest_camera_pb2.StreamingProtocolTrait.DESCRIPTOR.full_name
+        )
+        if not streaming_trait:
+            return None
+
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
+        serial_number = identity_trait.serialNumber if identity_trait else key
+        software_version = identity_trait.softwareVersion if identity_trait else None
+
+        label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
+            weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
+        )
+        name = label_trait.label if label_trait and label_trait.label else "Camera"
+
+        liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
+            weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
+        )
+        online = (
+            liveness_trait.status
+            == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
+            if liveness_trait
+            else True
+        )
+
+        recording_toggle_trait: nest_camera_pb2.RecordingToggleTrait | None = (
+            traits.get(nest_camera_pb2.RecordingToggleTrait.DESCRIPTOR.full_name)
+        )
+        streaming_enabled = (
+            recording_toggle_trait.currentCameraState
+            == nest_camera_pb2.CameraState.CAMERA_ON
+            if recording_toggle_trait
+            else False
+        )
+
+        is_streaming = online and streaming_enabled
+
+        # Check MicrophoneSettingsTrait first if available, otherwise guess from capabilities
+        mic_trait: nest_audio_pb2.MicrophoneSettingsTrait | None = traits.get(
+            nest_audio_pb2.MicrophoneSettingsTrait.DESCRIPTOR.full_name
+        )
+        if mic_trait:
+            audio_enabled = mic_trait.enableMicrophone
+        else:
+            # Fallback to capability check (imperfect but better than nothing)
+            audio_trait: nest_camera_pb2.StreamingProtocolTrait | None = traits.get(
+                nest_camera_pb2.StreamingProtocolTrait.DESCRIPTOR.full_name
+            )
+            audio_enabled = (
+                audio_trait.audioCommunicationType
+                != nest_camera_pb2.StreamingProtocolTrait.AudioCommunicationType.AUDIO_TYPE_NONE
+                if audio_trait
+                else False
+            )
+
+        indoor_chime_trait: (
+            nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait | None
+        ) = traits.get(
+            nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.DESCRIPTOR.full_name
+        )
+        indoor_chime_enabled = (
+            indoor_chime_trait.chimeEnabled if indoor_chime_trait else False
+        )
+
+        # Snapshot / Live Image URL
+        upload_live_image_trait: nest_camera_pb2.UploadLiveImageTrait | None = (
+            traits.get(nest_camera_pb2.UploadLiveImageTrait.DESCRIPTOR.full_name)
+        )
+        nexus_api_http_server_url = (
+            upload_live_image_trait.liveImageUrl if upload_live_image_trait else None
+        )
+
+        # Check if it's a doorbell (has doorbell traits)
+        if traits.get(
+            nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.DESCRIPTOR.full_name
+        ):
+            return NestDoorbell(
+                object_key=key,
+                serial_number=serial_number,
+                name=name,
+                model="Nest Doorbell",
+                software_version=software_version,
+                online=online,
+                is_streaming=is_streaming,
+                streaming_enabled=streaming_enabled,
+                audio_enabled=audio_enabled,
+                nexus_api_http_server_url=nexus_api_http_server_url
+                or "https://nexusapi.dropcam.com",
+                web_url=f"https://home.nest.com/camera/{key}",
+                indoor_chime_enabled=indoor_chime_enabled,
+                is_protobuf=True,
+            )
+
+        return NestCamera(
+            object_key=key,
+            serial_number=serial_number,
+            name=name,
+            model="Nest Camera",
+            software_version=software_version,
+            online=online,
+            is_streaming=is_streaming,
+            streaming_enabled=streaming_enabled,
+            audio_enabled=audio_enabled,
+            nexus_api_http_server_url=nexus_api_http_server_url
+            or "https://nexusapi.dropcam.com",
+            web_url=f"https://home.nest.com/camera/{key}",
+            is_protobuf=True,
+        )
+
+    def _parse_protobuf_sensor(
+        self, key: str, traits: dict[str, Any]
+    ) -> NestTempSensor | None:
+        """Parse a Nest Temperature Sensor from protobuf data."""
+        # Ensure it's a sensor and not a thermostat (thermostats also have temperature)
+        if traits.get(nest_hvac_pb2.HvacControlTrait.DESCRIPTOR.full_name):
+            return None
+
+        # Nest Protects have HumidityTrait, but Nest Temperature Sensors (Kryptonite) do not.
+        if traits.get(nest_sensor_pb2.HumidityTrait.DESCRIPTOR.full_name):
+            return None
+
+        temp_trait: nest_sensor_pb2.TemperatureTrait | None = traits.get(
+            nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name
+        )
+        if not temp_trait:
+            return None
+
+        # Identity
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
+        serial_number = identity_trait.serialNumber if identity_trait else key
+
+        label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
+            weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
+        )
+        name = label_trait.label if label_trait and label_trait.label else "Sensor"
+
+        liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
+            weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
+        )
+        online = (
+            liveness_trait.status
+            == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
+            if liveness_trait
+            else True
+        )
+
+        # Scale battery voltage (2V-3V) to %
+        batt_voltage_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+        )
+
+        battery_level = 0.0
+
+        if (
+            batt_voltage_trait
+            and batt_voltage_trait.HasField("batteryValue")
+            and batt_voltage_trait.batteryValue.HasField("batteryVoltage")
+        ):
+            # Convert V to mV
+            voltage_mv = int(
+                batt_voltage_trait.batteryValue.batteryVoltage.value * 1000
+            )
+            battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
+        else:
+            # Fallback to remainingPercent
+            battery_trait: weave_power_pb2.BatteryPowerSourceTrait | None = traits.get(
+                weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
+            )
+            battery_level = (
+                _scale_value(
+                    battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
+                )
+                if battery_trait
+                else 0.0
+            )
+
+        return NestTempSensor(
+            object_key=key,
+            serial_number=serial_number,
+            name=name,
+            model="Temperature Sensor",
+            online=online,
+            current_temperature=temp_trait.temperatureValue.temperature.value,
+            battery_level=battery_level,
+            is_protobuf=True,
+        )
+
+    def _parse_protobuf_structure(
+        self, key: str, traits: dict[str, Any]
+    ) -> NestStructure | None:
+        """Parse a Nest Structure from protobuf data."""
+        if not traits.get(nest_structure_pb2.StructureInfoTrait.DESCRIPTOR.full_name):
+            return None
+
+        # Structure Info
+        info_trait: nest_structure_pb2.StructureInfoTrait | None = traits.get(
+            nest_structure_pb2.StructureInfoTrait.DESCRIPTOR.full_name
+        )
+        # Location
+        location_trait: nest_structure_pb2.StructureLocationTrait | None = traits.get(
+            nest_structure_pb2.StructureLocationTrait.DESCRIPTOR.full_name
+        )
+
+        # Identity
+        identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
+            weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
+        )
+        serial_number = (
+            identity_trait.serialNumber if identity_trait else key.split(".")[-1]
+        )  # Fallback
+
+        # Mode
+        mode = StructureMode.HOME
+        mode_trait: nest_occupancy_pb2.StructureModeTrait | None = traits.get(
+            nest_occupancy_pb2.StructureModeTrait.DESCRIPTOR.full_name
+        )
+        if mode_trait:
+            if (
+                mode_trait.structureMode
+                == nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_AWAY
+            ):
+                mode = StructureMode.AWAY
+            elif (
+                mode_trait.structureMode
+                == nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_SLEEP
+            ):
+                mode = StructureMode.SLEEP
+            elif (
+                mode_trait.structureMode
+                == nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_VACATION
+            ):
+                mode = StructureMode.VACATION
+
+        return NestStructure(
+            object_key=key,
+            serial_number=serial_number,
+            name=info_trait.name if info_trait else "Home",
+            location=location_trait.addressLines[0]
+            if location_trait and location_trait.addressLines
+            else None,
+            mode=mode,
+            is_protobuf=True,
         )
 
     def _create_heatlink(self, thermostat: NestThermostat) -> NestHeatLink | None:

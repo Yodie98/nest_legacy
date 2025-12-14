@@ -139,6 +139,7 @@
                 "state": {
                     "away": "Away",
                     "home": "Home",
+                    "sleep": "Sleep",
                     "vacation": "Vacation"
                 }
             },
@@ -187,6 +188,9 @@
             "replace_by": {
                 "name": "Replace By"
             },
+            "target_humidity": {
+                "name": "Target Humidity"
+            },
             "temperature": {
                 "name": "Temperature"
             }
@@ -200,6 +204,9 @@
             },
             "camera_streaming": {
                 "name": "Streaming"
+            },
+            "dehumidifier": {
+                "name": "Dehumidifier"
             },
             "heads_up": {
                 "name": "Heads-Up"
@@ -225,8 +232,25 @@
             "steam_check": {
                 "name": "Steam Check"
             },
+            "temperature_lock": {
+                "name": "Temperature Lock"
+            },
             "visitor_announcements": {
                 "name": "Visitor Announcements"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "user": {
+                "data": {
+                    "enable_protobuf_camera": "Enable Protobuf for Cameras (Experimental)",
+                    "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
+                    "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
+                    "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
+                    "enable_protobuf_thermostat": "Enable Protobuf for Thermostats (Experimental)",
+                    "event_poll_interval": "Camera Event Poll Interval (seconds)"
+                }
             }
         }
     }

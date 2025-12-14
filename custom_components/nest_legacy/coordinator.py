@@ -20,8 +20,15 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_TYPE,
     CONF_COOKIES,
+    CONF_ENABLE_PROTOBUF_CAMERA,
+    CONF_ENABLE_PROTOBUF_LOCK,
+    CONF_ENABLE_PROTOBUF_PROTECT,
+    CONF_ENABLE_PROTOBUF_STRUCTURE,
+    CONF_ENABLE_PROTOBUF_THERMOSTAT,
+    CONF_EVENT_POLL_INTERVAL,
     CONF_FIELD_TEST,
     CONF_ISSUE_TOKEN,
+    DEFAULT_EVENT_POLL_INTERVAL,
     DOMAIN,
 )
 from .events import NEST_LEGACY_EVENT
@@ -32,12 +39,11 @@ from .pynest.exceptions import (
     NotAuthenticatedException,
     PynestException,
 )
-from .pynest.models import NestCamera, NestDevice, NestLock
+from .pynest.models import NestCamera, NestDevice, NestHeatLink
 from .pynest.parser import NestParser
 
 _LOGGER = logging.getLogger(__name__)
 
-EVENT_POLL_INTERVAL = 5  # seconds
 MAX_EVENT_AGE_SECONDS = 60
 MAX_BACKOFF_SECONDS = 60
 INITIAL_BACKOFF_SECONDS = 0.1
@@ -63,7 +69,21 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         )
         self.config_entry = entry
         self.client = NestClient(
-            async_create_clientsession(hass), entry.data.get(CONF_FIELD_TEST, False)
+            async_create_clientsession(hass),
+            field_test=entry.data.get(CONF_FIELD_TEST, False),
+            enable_protobuf_lock=entry.options.get(CONF_ENABLE_PROTOBUF_LOCK, True),
+            enable_protobuf_thermostat=entry.options.get(
+                CONF_ENABLE_PROTOBUF_THERMOSTAT, True
+            ),
+            enable_protobuf_structure=entry.options.get(
+                CONF_ENABLE_PROTOBUF_STRUCTURE, False
+            ),
+            enable_protobuf_protect=entry.options.get(
+                CONF_ENABLE_PROTOBUF_PROTECT, False
+            ),
+            enable_protobuf_camera=entry.options.get(
+                CONF_ENABLE_PROTOBUF_CAMERA, False
+            ),
         )
         self.parser = NestParser()
         self._subscribe_task: asyncio.Task | None = None
@@ -126,7 +146,18 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
     ) -> None:
         """Set device data and handle exceptions."""
         try:
-            await self.client.async_set_device_data(device, data)
+            # For Protobuf devices, we need to pass the current raw traits to the client
+            # to ensure we don't overwrite existing fields with defaults.
+            current_traits = None
+            if device.is_protobuf:
+                resource_id = device.object_key
+                # HeatLinks are controlled via their associated thermostat resource
+                if isinstance(device, NestHeatLink) and device.associated_thermostat_object_key:
+                    resource_id = device.associated_thermostat_object_key
+
+                current_traits = self._raw_data.get(resource_id)
+
+            await self.client.async_set_device_data(device, data, current_traits=current_traits)
         except (ClientError, TimeoutError, PynestException) as err:
             _LOGGER.error(
                 "Error setting data for Nest device %s %s (%s) with payload %s: %r",
@@ -310,13 +341,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                         _LOGGER.debug("Received first protobuf update")
                         self.first_protobuf_update_received.set()
 
-                        # If no locks were discovered in the first update, stop observing.
-                        if not any(
-                            isinstance(device, NestLock)
-                            for device in self.data.values()
-                        ):
+                        # If no protobuf-enabled devices were discovered, stop observing.
+                        if not any(device.is_protobuf for device in self.data.values()):
                             _LOGGER.debug(
-                                "No Nest Locks found in initial protobuf data; stopping observer task"
+                                "No protobuf-enabled devices found in initial data; stopping observer task"
                             )
                             return  # Exit the while loop and terminate the task.
 
@@ -353,6 +381,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         """Poll the camera cuepoint API for events."""
         failures = 0
         while True:
+            poll_interval = self.config_entry.options.get(
+                CONF_EVENT_POLL_INTERVAL, DEFAULT_EVENT_POLL_INTERVAL
+            )
+
             try:
                 # Determine the start time for the event query
                 last_success = self._last_event_poll_success_time or (
@@ -360,13 +392,15 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 )
                 # Use last success time with a buffer, but don't look back more than 60s
                 start_time = max(
-                    last_success - EVENT_POLL_INTERVAL,
+                    last_success - poll_interval,
                     time.time() - MAX_EVENT_AGE_SECONDS,
                 )
 
                 # Gather all camera event tasks
                 tasks = [
-                    self._async_process_events_for_device(device, start_time)
+                    self._async_process_events_for_device(
+                        device, start_time, poll_interval
+                    )
                     for device in self.data.values()
                     if isinstance(device, NestCamera)
                     and device.online
@@ -397,14 +431,16 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                     )
                 await asyncio.sleep(delay)
 
-            await asyncio.sleep(EVENT_POLL_INTERVAL)
+            await asyncio.sleep(poll_interval)
 
     async def _async_process_events_for_device(
-        self, device: NestCamera, start_time: float
+        self, device: NestCamera, start_time: float, poll_interval: float
     ) -> None:
         """Fetch and process events for a single camera."""
         # Add jitter to spread out API calls
-        await asyncio.sleep(random.uniform(0, EVENT_POLL_INTERVAL - 1))
+        jitter_limit = max(0, poll_interval - 1)
+        if jitter_limit > 0:
+            await asyncio.sleep(random.uniform(0, jitter_limit))
 
         try:
             events = await self.client.async_get_camera_events(

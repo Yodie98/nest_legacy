@@ -112,6 +112,16 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         device_types=(NestThermostat,),
     ),
     NestSensorEntityDescription(
+        key="target_humidity",
+        translation_key="target_humidity",
+        value_fn=lambda device: device.target_humidity,
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_types=(NestThermostat,),
+    ),
+    NestSensorEntityDescription(
         key="backplate_temperature",
         translation_key="backplate_temperature",
         value_fn=lambda device: device.backplate_temperature,
@@ -172,6 +182,8 @@ async def async_setup_entry(
         for description in _DESCRIPTIONS
         if isinstance(device, description.device_types)
         and hasattr(device, description.key)
+        # Handle optional fields (like target_humidity)
+        and getattr(device, description.key) is not None
     ]
     # Add fan-specific sensors
     entities.extend(

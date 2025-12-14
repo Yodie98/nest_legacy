@@ -253,6 +253,7 @@ message SendCommandResponse {
     }
 
     repeated ResourceCommandResponse sendCommandResponse = 1;
+    google.rpc.Status status = 2;
 }
 
 message BatchUpdateStateRequest {
@@ -264,6 +265,7 @@ message BatchUpdateStateResponse {
         repeated TraitOperation traitOperations = 1;
     }
     repeated TraitOperationStateResponse  batchUpdateStateResponse = 1;
+    google.rpc.Status status = 2;
 }
 
 service TraitBatchApi {

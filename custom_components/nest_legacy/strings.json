@@ -37,6 +37,20 @@
       "unique_id_mismatch": "Please ensure you reconfigure against the same account."
     }
   },
+  "options": {
+    "step": {
+      "user": {
+        "data": {
+          "event_poll_interval": "Camera Event Poll Interval (seconds)",
+          "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
+          "enable_protobuf_thermostat": "Enable Protobuf for Thermostats (Experimental)",
+          "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
+          "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
+          "enable_protobuf_camera": "Enable Protobuf for Cameras (Experimental)"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
       "battery_health": { "name": "Battery Health" },
@@ -99,6 +113,7 @@
         "state": {
           "home": "Home",
           "away": "Away",
+          "sleep": "Sleep",
           "vacation": "Vacation"
         }
       },
@@ -117,6 +132,7 @@
       "fan_duration_config": { "name": "Fan Duration Configuration" },
       "fan_timer_timeout": { "name": "Fan Timer Timeout" },
       "humidity": { "name": "Humidity" },
+      "target_humidity": { "name": "Target Humidity" },
       "last_action": {
         "name": "Last Action",
         "state": {
@@ -145,7 +161,9 @@
       "pathlight": { "name": "Pathlight" },
       "status_led": { "name": "Status LED" },
       "steam_check": { "name": "Steam Check" },
-      "visitor_announcements": { "name": "Visitor Announcements" }
+      "visitor_announcements": { "name": "Visitor Announcements" },
+      "temperature_lock": { "name": "Temperature Lock" },
+      "dehumidifier": { "name": "Dehumidifier" }
     }
   }
 }
