@@ -75,7 +75,11 @@ def _get_protobuf_location(traits: dict[str, Any]) -> str | None:
     )
     if not loc_trait:
         return None
-    return loc_trait.whereLabel.literal or loc_trait.fixtureNameLabel.literal
+    if loc_trait.HasField("whereLabel"):
+        return loc_trait.whereLabel.literal
+    if loc_trait.HasField("fixtureNameLabel"):
+        return loc_trait.fixtureNameLabel.literal
+    return None
 
 
 def _milli_volt_to_percentage(state: int) -> float:
@@ -657,7 +661,7 @@ class NestParser:
         return NestLock(
             object_key=key,
             serial_number=serial_number,
-            location=None,  # Location parsing for protobuf needs more context
+            location=_get_protobuf_location(traits),
             name=name,
             model="Nest x Yale Lock",
             software_version=software_version,
@@ -1042,6 +1046,7 @@ class NestParser:
             object_key=key,
             serial_number=serial_number,
             name=name,
+            location=_get_protobuf_location(traits),
             model="Thermostat",
             software_version=software_version,
             online=online,
@@ -1128,8 +1133,6 @@ class NestParser:
             else True
         )
 
-        location = _get_protobuf_location(traits)
-
         batt_voltage_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
             nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
         )
@@ -1210,7 +1213,7 @@ class NestParser:
             return NestWiredProtect(
                 object_key=key,
                 serial_number=serial_number,
-                location=location,
+                location=_get_protobuf_location(traits),
                 name=name,
                 model="Nest Protect (Wired)",
                 software_version=software_version,
@@ -1239,7 +1242,7 @@ class NestParser:
         return NestBatteryProtect(
             object_key=key,
             serial_number=serial_number,
-            location=location,
+            location=_get_protobuf_location(traits),
             name=name,
             model="Nest Protect (Battery)",
             software_version=software_version,
@@ -1350,6 +1353,7 @@ class NestParser:
                 object_key=key,
                 serial_number=serial_number,
                 name=name,
+                location=_get_protobuf_location(traits),
                 model="Nest Doorbell",
                 software_version=software_version,
                 online=online,
@@ -1367,6 +1371,7 @@ class NestParser:
             object_key=key,
             serial_number=serial_number,
             name=name,
+            location=_get_protobuf_location(traits),
             model="Nest Camera",
             software_version=software_version,
             online=online,

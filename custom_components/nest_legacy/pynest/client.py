@@ -77,6 +77,7 @@ _OBSERVE_LOCK_TRAITS = (
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
     weave_heartbeat_pb2.LivenessTrait,
+    nest_located_pb2.DeviceLocatedSettingsTrait,
 )
 
 # Thermostat-specific traits
@@ -109,6 +110,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
     weave_heartbeat_pb2.LivenessTrait,
+    nest_located_pb2.DeviceLocatedSettingsTrait,
 )
 
 # Protect-specific traits
@@ -139,6 +141,7 @@ _OBSERVE_PROTECT_TRAITS = (
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
     weave_heartbeat_pb2.LivenessTrait,
+    nest_located_pb2.DeviceLocatedSettingsTrait,
 )
 
 # Camera-specific traits
@@ -158,6 +161,7 @@ _OBSERVE_CAMERA_TRAITS = (
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
     weave_heartbeat_pb2.LivenessTrait,
+    nest_located_pb2.DeviceLocatedSettingsTrait,
 )
 
 # Structure-specific traits
@@ -1953,6 +1957,14 @@ class NestClient:
                                 resource_id = state.traitId.resourceId
                                 if resource_id not in updates:
                                     updates[resource_id] = {}
+                                # Prioritize ACCEPTED over CONFIRMED.
+                                # If we already have data for this trait in this batch,
+                                # and the current update is NOT ACCEPTED, ignore it.
+                                if (
+                                    descriptor_full_name in updates[resource_id]
+                                    and state.stateTypes != v2_pb2.ACCEPTED
+                                ):
+                                    continue
                                 updates[resource_id][descriptor_full_name] = (
                                     unpacked_message
                                 )
