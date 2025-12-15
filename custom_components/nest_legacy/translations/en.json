@@ -54,6 +54,9 @@
             "eco_mode": {
                 "name": "Eco Mode"
             },
+            "filter_replacement_needed": {
+                "name": "Filter Replacement Needed"
+            },
             "heat_status": {
                 "name": "Heat"
             },
@@ -164,6 +167,9 @@
             },
             "fan_timer_timeout": {
                 "name": "Fan Timer Timeout"
+            },
+            "filter_runtime": {
+                "name": "Filter Runtime"
             },
             "humidity": {
                 "name": "Humidity"
