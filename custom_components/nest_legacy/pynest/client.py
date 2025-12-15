@@ -569,10 +569,6 @@ class NestClient:
                 for bucket in self._buckets_for_subscription
             }
 
-    def get_raw_data_for_diagnostics(self) -> dict[str, Any]:
-        """Return raw data, useful for diagnostics."""
-        return {key: bucket.value for key, bucket in self._raw_data.items()}
-
     async def async_subscribe_for_updates(self) -> dict[str, dict[str, Any]]:
         """Subscribe for data updates (long poll)."""
         if not self._nest_session:

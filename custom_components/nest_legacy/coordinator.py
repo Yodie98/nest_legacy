@@ -94,6 +94,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self._last_event_poll_success_time: float | None = None
         self.first_protobuf_update_received = asyncio.Event()
 
+    def get_raw_data_for_diagnostics(self) -> dict[str, Any]:
+        """Return raw data, useful for diagnostics."""
+        return self._raw_data
+
     async def async_reauthenticate(self) -> None:
         """(Re-)authenticate with the Nest API."""
         data = self.config_entry.data

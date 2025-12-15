@@ -5,6 +5,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from google.protobuf.json_format import MessageToDict
+from google.protobuf.message import Message
+
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.core import HomeAssistant
@@ -12,7 +15,7 @@ from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import CONF_COOKIES, CONF_ISSUE_TOKEN
 from .coordinator import NestConfigEntry
-from .pynest.models import NestDevice
+from .pynest.models import NestDevice, NestHeatLink
 
 TO_REDACT = [
     CONF_ACCESS_TOKEN,
@@ -36,9 +39,7 @@ TO_REDACT = [
     "pairing_token",
     "postal_code",
     "profile_image_url",
-    "serial_number",
     "service_config",
-    "state",
     "sunrise",
     "sunset",
     "temp_c",
@@ -55,6 +56,17 @@ TO_REDACT = [
     "title",
     "phone_numbers",
 ]
+
+
+def _convert_protobuf_to_dict(data: Any) -> Any:
+    """Convert protobuf messages to dicts recursively."""
+    if isinstance(data, Message):
+        return MessageToDict(data, preserving_proto_field_name=True)
+    if isinstance(data, dict):
+        return {k: _convert_protobuf_to_dict(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_convert_protobuf_to_dict(item) for item in data]
+    return data
 
 
 async def async_get_config_entry_diagnostics(
@@ -76,10 +88,12 @@ async def async_get_config_entry_diagnostics(
         if value
     }
 
+    raw_api_data = _convert_protobuf_to_dict(coordinator.get_raw_data_for_diagnostics())
+
     data: dict[str, Any] = {
         "config_entry": entry.as_dict(),
         "processed_data": processed_data,
-        "raw_api_data": coordinator.client.get_raw_data_for_diagnostics(),
+        "raw_api_data": raw_api_data,
     }
 
     return async_redact_data(data, TO_REDACT)
@@ -97,6 +111,19 @@ async def async_get_device_diagnostics(
     if not isinstance(device_data, NestDevice):
         return {"error": "Device not found in coordinator data"}
 
+    raw_data = coordinator.get_raw_data_for_diagnostics()
+    device_raw_data = raw_data.get(device_data.object_key)
+
+    # For Heat Links, fall back to associated thermostat data if available
+    if (
+        not device_raw_data
+        and isinstance(device_data, NestHeatLink)
+        and device_data.associated_thermostat_object_key
+    ):
+        device_raw_data = raw_data.get(device_data.associated_thermostat_object_key)
+
+    device_raw_data = _convert_protobuf_to_dict(device_raw_data)
+
     data: dict[str, Any] = {
         "device_entry": {
             "name": device.name,
@@ -106,6 +133,7 @@ async def async_get_device_diagnostics(
             "manufacturer": device.manufacturer,
         },
         "processed_data": dataclasses.asdict(device_data),
+        "raw_data": device_raw_data,
     }
 
     return async_redact_data(data, TO_REDACT)
