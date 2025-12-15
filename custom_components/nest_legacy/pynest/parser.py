@@ -1031,17 +1031,11 @@ class NestParser:
             if hw_settings_trait.HasField("temperature"):
                 hot_water_temperature = hw_settings_trait.temperature.value
 
-            if hw_settings_trait.HasField("mode"):
-                if (
-                    hw_settings_trait.mode
-                    == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
-                ):
-                    hot_water_mode = HotWaterMode.SCHEDULE
-                elif (
-                    hw_settings_trait.mode
-                    == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_OFF
-                ):
-                    hot_water_mode = HotWaterMode.OFF
+            if (
+                hw_settings_trait.mode
+                == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
+            ):
+                hot_water_mode = HotWaterMode.SCHEDULE
 
             hot_water_away_enabled = hw_settings_trait.structureModeFollowEnabled
 
