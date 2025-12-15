@@ -16,17 +16,18 @@ The official Home Assistant Nest integration uses Google's Smart Device Manageme
 
 | Feature                  | Nest Legacy (This Integration)                                  | Official Nest Integration (SDM API)                            |
 | ------------------------ | --------------------------------------------------------------- | -------------------------------------------------------------- |
-| **API Used**             | Unofficial Nest Web API                                         | Official Google SDM API                                        |
+| **API Used**             | Unofficial Nest Web API (REST & Protobuf)                       | Official Google SDM API                                        |
 | **Cost**                 | Free                                                            | $5 USD one-time fee required by Google                         |
 | **Authentication**       | Access Token (Nest Account) or Cookies (Google Account)         | OAuth2 with Google Cloud Project                               |
 | **Supported Devices**    | Wider range, including **Nest Protect**, **Nest Temp Sensors**, **Nest x Yale Locks**, and **Nest Heat Link**. | Limited to newer Thermostats, Cameras, and Doorbells.         |
+| **Data Updates**         | Push-based (Subscriber)                                         | Push-based (Pub/Sub)                                           |
 | **Stability**            | Relies on an unofficial API that could change or break without notice. | Officially supported by Google, more stable long-term.        |
 
 **In short, use this integration if you want to:**
 
 - Integrate Nest Protects, Temperature Sensors, Locks, or Heat Links.
 - Avoid the $5 Google API fee.
-- Access features not exposed by the official API.
+- Access features not exposed by the official API (e.g., specific component health tests, Heat Link boost).
 
 ## Supported Devices
 
@@ -34,63 +35,60 @@ This integration supports a wide variety of Nest devices:
 
 - **Nest Thermostats** (1st, 2nd, 3rd gen, Thermostat E, 2020 mirror edition)
 - **Nest Protect** (1st and 2nd gen, both wired and battery)
-- **Nest Temperature Sensors**
+- **Nest Temperature Sensors** (Kryptonite)
 - **Nest Cameras** (Cam Indoor, IQ Indoor, Outdoor, IQ Outdoor)
 - **Nest Doorbells** (Wired 1st gen)
 - **Nest x Yale Locks**
 - **Nest Heat Link** (for UK/EU hot water control)
 
-## Features
+## Features & Entities
 
-This integration creates a rich set of entities for your Nest devices.
+This integration creates a rich set of entities for your Nest devices based on their capabilities.
 
-- **Nest Thermostat**:
-  - `climate` entity for full control over temperature and HVAC modes (Heat, Cool, Heat/Cool, Off).
-  - `fan` entity to control the fan independently.
-  - `binary_sensor` for occupancy and Eco Mode status.
-  - `sensor` entities for humidity, backplate temperature, and diagnostic fan timer values.
+### Nest Thermostat
+- **Climate:** Full control over temperature, HVAC modes (Heat, Cool, Heat/Cool, Off), and Eco presets.
+- **Fan:** Independent control of the fan (On/Off, Speed/Percentage).
+- **Sensors:** Current Temperature, Target Temperature, Humidity, Target Humidity, Backplate Temperature, Filter Runtime.
+- **Binary Sensors:** Occupancy, Leaf status, Filter Replacement Needed.
+- **Switches:** Temperature Lock, Dehumidifier state.
 
-- **Nest Protect**:
-  - `binary_sensor` entities for Smoke, Carbon Monoxide (CO), and Heat alarms.
-  - `binary_sensor` for occupancy (wired models only).
-  - `binary_sensor` entities for diagnostic status (battery health, line power, component tests).
-  - `sensor` entities for battery level and replacement date.
-  - `switch` entities to control Pathlight, Nightly Promise, Heads-Up alerts, and Steam Check.
-  - `select` entity to adjust the Pathlight brightness.
+### Nest Protect
+- **Binary Sensors:** Smoke Status, CO Status, Heat Status.
+- **Diagnostic Binary Sensors:** Battery Health, Line Power (wired only), Occupancy (wired only), Removed from Base status.
+- **Component Tests:** Sensors indicating pass/fail for Speaker, Smoke, CO, WiFi, LED, PIR, Buzzer, and Humidity sensors.
+- **Sensors:** Battery Level (%), Replace By Date, Last Manual Test time, Last Audio Self-Test time.
+- **Switches:** Nightly Promise (Green LED), Heads-Up Alerts, Steam Check, Night Light enable.
+- **Select:** Night Light Brightness (Low, Medium, High).
 
-- **Nest Temperature Sensor**:
-  - `sensor` for temperature and battery level.
+### Nest Cameras & Doorbells
+- **Camera:** Live streaming entity.
+- **Switches:** Streaming Enabled, Audio Recording, Indoor Chime (Doorbell), Visitor Announcements (Doorbell), Night Vision (IR), Status LED, Video Rotation.
+- **Events:** `event` entities that trigger on Motion, Person, Sound, Face Detection, and Doorbell Chime.
+- **Media Browser:** Browse, play, and see thumbnails for historical camera events directly in the Home Assistant Media Browser.
 
-- **Nest Cameras & Doorbells**:
-  - `camera` entity with live streaming.
-  - `switch` entities to enable/disable streaming, audio, night vision, and the status LED.
-  - `switch` for Indoor Chime and Visitor Announcements (Doorbells only).
-  - `event` entities that fire for doorbell presses, motion, person, sound, and face detection.
+### Nest x Yale Lock
+- **Lock:** Lock and unlock control.
+- **Sensors:** Battery Level, Last Actor (who locked/unlocked: Keypad, Manual, Remote, etc.).
+- **Binary Sensor:** Tamper detection.
+- **Switch:** Auto-Relock enable/disable.
+- **Number:** Configure the Auto-Relock duration (seconds).
 
-- **Camera Event Media Browser**:
-  - A `media_source` is provided, allowing you to browse, view, and download recent camera event clips and thumbnails directly from the Home Assistant Media Browser.
+### Nest Heat Link (Europe)
+- **Water Heater:** Control hot water heating.
+- **Features:** Set target temperature, toggle Boost mode (On/Off), toggle Away mode.
 
-- **Nest x Yale Lock**:
-  - `lock` entity to lock and unlock.
-  - `sensor` to show who performed the last lock/unlock action (keypad, manual, remote).
-  - `binary_sensor` for tamper detection.
-  - `switch` to enable/disable auto-relock.
-  - `number` entity to configure the auto-relock duration.
-
-- **Nest Heat Link**:
-  - `water_heater` entity for full control over your hot water system, including setting temperature, mode, and activating a boost.
-
-- **Nest Home/Structure**:
-  - `select` entity to set the home's mode (Home, Away, Vacation).
+### Structure (Home)
+- **Select:** Set the structure mode (Home, Away, Sleep, Vacation).
 
 ## Installation
 
-## HACS
+### HACS
 
-1. [Add](http://homeassistant.local:8123/hacs/dashboard) custom integrations repository: `https://github.com/tronikos/nest_legacy`
-2. Select "Nest Legacy" in the Integration tab and click download
-3. Restart Home Assistant
-4. Enable the integration
+1. Open HACS in Home Assistant.
+2. Add a custom integration repository: `https://github.com/tronikos/nest_legacy`
+3. Select "Nest Legacy" in the Integration tab and click download.
+4. Restart Home Assistant.
+5. Go to Settings > Devices & Services > Add Integration > Search for "Nest Legacy".
 
 ## Configuration
 
@@ -100,11 +98,11 @@ After installation, the integration can be configured via the Home Assistant UI.
 
 You will be asked to select your account type. Follow the instructions below based on your account.
 
-### Google Account Configuration
+### Option A: Google Account
 
 For accounts migrated to Google, or created after August 2019. You will need to retrieve an `issue_token` and `cookies` from your browser.
 
-(Instructions adapted from the excellent `homebridge-nest` project).
+(Instructions adapted from the `homebridge-nest` project).
 
 1. Open a Chrome browser tab in **Incognito Mode**.
 2. Open Developer Tools (View > Developer > Developer Tools, or `Ctrl+Shift+I` / `Cmd+Option+I`).
@@ -119,7 +117,7 @@ For accounts migrated to Google, or created after August 2019. You will need to 
 11. Paste these values into the Home Assistant configuration form.
 12. **Do not log out of `home.nest.com`**, as this will invalidate your credentials. Just close the browser tab.
 
-### Legacy Nest Account Configuration
+### Option B: Legacy Nest Account
 
 For older, non-migrated Nest accounts. You will need to obtain an `access_token`.
 
@@ -133,6 +131,18 @@ For older, non-migrated Nest accounts. You will need to obtain an `access_token`
 ### Field Test Environment
 
 If you are part of the Google Field Test program, check the "Use Field Test environment" box during setup.
+
+### Configuration Options
+
+Once set up, you can click "Configure" on the integration entry to tweak settings:
+
+*   **Camera Event Poll Interval:** How often to check for new camera events (default: 5 seconds).
+*   **Protobuf Options:** Enable/Disable the use of the newer Protobuf API for specific device types (Locks, Thermostats, Protects, etc.).
+
+## Troubleshooting
+
+*   **Authentication Errors:** If you receive authentication errors, your cookies or tokens may have expired. You will need to re-fetch them using the steps above and use the "Reconfigure" option in the integration.
+*   **Missing Devices:** Ensure your devices are visible in the Nest app. Some newer Google Nest devices (like the 2021+ battery cameras) are exclusively on the Google Home app and may not appear here, or may have limited functionality via the legacy API.
 
 ## Credits
 
