@@ -456,6 +456,7 @@ class NestParser:
             occupancy=occupancy,
             battery_level=_scale_value(data.get("battery_level", 0), 3.6, 3.9, 0, 100),
             has_hot_water_control=data.get("has_hot_water_control", False),
+            has_hot_water_temperature=data.get("has_hot_water_temperature", False),
             heat_link_model=data.get("heat_link_model"),
             heat_link_serial_number=data.get("heat_link_serial_number"),
             heat_link_sw_version=data.get("heat_link_sw_version"),
@@ -894,6 +895,7 @@ class NestParser:
         can_cool = True
         has_dehumidifier = False
         has_hot_water_control = False
+        has_hot_water_temperature = False
         has_humidifier = False
         has_air_filter = False
 
@@ -910,6 +912,7 @@ class NestParser:
             )
             has_dehumidifier = capabilities_trait.hasDehumidifier
             has_hot_water_control = capabilities_trait.hasHotWaterControl
+            has_hot_water_temperature = capabilities_trait.hasHotWaterTemperature
             has_humidifier = capabilities_trait.hasHumidifier
             has_air_filter = capabilities_trait.hasAirFilter
 
@@ -1042,6 +1045,21 @@ class NestParser:
 
             hot_water_away_enabled = hw_settings_trait.structureModeFollowEnabled
 
+        # Heat Link Info
+        heat_link_trait: nest_hvac_pb2.HeatLinkTrait | None = traits.get(
+            nest_hvac_pb2.HeatLinkTrait.DESCRIPTOR.full_name
+        )
+        heat_link_serial_number = None
+        heat_link_model = None
+        heat_link_sw_version = None
+        if heat_link_trait:
+            if heat_link_trait.HasField("heatLinkSerialNumber"):
+                heat_link_serial_number = heat_link_trait.heatLinkSerialNumber.value
+            if heat_link_trait.HasField("heatLinkModel"):
+                heat_link_model = heat_link_trait.heatLinkModel.value
+            if heat_link_trait.HasField("heatLinkSwVersion"):
+                heat_link_sw_version = heat_link_trait.heatLinkSwVersion.value
+
         return NestThermostat(
             object_key=key,
             serial_number=serial_number,
@@ -1072,9 +1090,14 @@ class NestParser:
             has_fan=True,
             is_protobuf=True,
             has_hot_water_control=has_hot_water_control,
-            heat_link_model="Heat Link" if has_hot_water_control else None,
-            heat_link_serial_number=serial_number if has_hot_water_control else None,
-            heat_link_sw_version=software_version if has_hot_water_control else None,
+            has_hot_water_temperature=has_hot_water_temperature,
+            heat_link_model=heat_link_model if has_hot_water_control else None,
+            heat_link_serial_number=heat_link_serial_number
+            if has_hot_water_control
+            else None,
+            heat_link_sw_version=heat_link_sw_version
+            if has_hot_water_control
+            else None,
             hot_water_active=hot_water_active,
             hot_water_boost_time_to_end=hot_water_boost_time_to_end,
             hot_water_temperature=hot_water_temperature,
@@ -1539,6 +1562,7 @@ class NestParser:
             online=thermostat.online,
             associated_thermostat_object_key=thermostat.object_key,
             hot_water_active=thermostat.hot_water_active,
+            has_hot_water_temperature=thermostat.has_hot_water_temperature,
             hot_water_boost_active=thermostat.hot_water_boost_time_to_end > 0,
             hot_water_mode=thermostat.hot_water_mode,
             hot_water_away_enabled=thermostat.hot_water_away_enabled,

@@ -127,6 +127,7 @@ class NestThermostat(NestDevice):
     heat_link_serial_number: str | None = None
     heat_link_sw_version: str | None = None
     hot_water_active: bool = False
+    has_hot_water_temperature: bool = False
     hot_water_mode: HotWaterMode = HotWaterMode.OFF
     hot_water_away_enabled: bool = False
     hot_water_boost_time_to_end: int = 0
@@ -176,6 +177,7 @@ class NestHeatLink(NestDevice):
 
     associated_thermostat_object_key: str | None = None
     hot_water_active: bool = False
+    has_hot_water_temperature: bool = False
     hot_water_boost_active: bool = False
     hot_water_mode: HotWaterMode = HotWaterMode.OFF
     hot_water_away_enabled: bool = False

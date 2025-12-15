@@ -101,6 +101,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     nest_hvac_pb2.LeafTrait,
     nest_hvac_pb2.FilterReminderTrait,
     # Hot Water / Heat Link
+    nest_hvac_pb2.HeatLinkTrait,
     nest_hvac_pb2.HotWaterTrait,
     nest_hvac_pb2.HotWaterSettingsTrait,
     # Sensors (Thermostat)

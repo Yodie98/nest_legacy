@@ -50,15 +50,21 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
 
     _attr_name = None  # Main feature of the device
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_supported_features = (
-        WaterHeaterEntityFeature.TARGET_TEMPERATURE
-        | WaterHeaterEntityFeature.OPERATION_MODE
-        | WaterHeaterEntityFeature.AWAY_MODE
-        | WaterHeaterEntityFeature.ON_OFF
-    )
     _attr_operation_list = [*_OPERATION_MODE_BIDICT.inverse]
     _attr_min_temp = 30.0
     _attr_max_temp = 70.0
+
+    @property
+    def supported_features(self) -> WaterHeaterEntityFeature:
+        """Return the list of supported features."""
+        features = (
+            WaterHeaterEntityFeature.OPERATION_MODE
+            | WaterHeaterEntityFeature.AWAY_MODE
+            | WaterHeaterEntityFeature.ON_OFF
+        )
+        if self.device.has_hot_water_temperature:
+            features |= WaterHeaterEntityFeature.TARGET_TEMPERATURE
+        return features
 
     @property
     def current_operation(self) -> str | None:
