@@ -156,12 +156,17 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             if device.is_protobuf:
                 resource_id = device.object_key
                 # HeatLinks are controlled via their associated thermostat resource
-                if isinstance(device, NestHeatLink) and device.associated_thermostat_object_key:
+                if (
+                    isinstance(device, NestHeatLink)
+                    and device.associated_thermostat_object_key
+                ):
                     resource_id = device.associated_thermostat_object_key
 
                 current_traits = self._raw_data.get(resource_id)
 
-            await self.client.async_set_device_data(device, data, current_traits=current_traits)
+            await self.client.async_set_device_data(
+                device, data, current_traits=current_traits
+            )
         except (ClientError, TimeoutError, PynestException) as err:
             _LOGGER.error(
                 "Error setting data for Nest device %s %s (%s) with payload %s: %r",

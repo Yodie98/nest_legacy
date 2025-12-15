@@ -1,53 +1,39 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Nest account type",
-        "description": "Select your Nest account type.\n\n- **Google Account**: For accounts migrated to Google, or created after August 2019.\n- **Nest Account**: For older, non-migrated legacy Nest accounts.\n\nSelect 'Field Test' if you are part of the Google Field Test program.",
-        "data": {
-          "account_type": "Account type",
-          "field_test": "Use Field Test environment"
-        }
-      },
-      "google_account": {
-        "title": "Google account authentication",
-        "description": "To get your `issue_token` and `cookies`, follow the instructions in the integration documentation. Please paste them below.",
-        "data": {
-          "issue_token": "Issue token",
-          "cookies": "Cookies"
-        }
-      },
-      "nest_account": {
-        "title": "Nest account authentication",
-        "description": "To get your `access_token`, follow the instructions in the integration documentation for legacy Nest accounts. Please paste it below.",
-        "data": {
-          "access_token": "Access token"
-        }
-      }
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_account%]",
+      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
+      "unique_id_mismatch": "Please ensure you reconfigure against the same account."
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
-    "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_account%]",
-      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
-      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
-      "unique_id_mismatch": "Please ensure you reconfigure against the same account."
-    }
-  },
-  "options": {
     "step": {
+      "google_account": {
+        "data": {
+          "cookies": "Cookies",
+          "issue_token": "Issue token"
+        },
+        "description": "To get your `issue_token` and `cookies`, follow the instructions in the integration documentation. Please paste them below.",
+        "title": "Google account authentication"
+      },
+      "nest_account": {
+        "data": {
+          "access_token": "Access token"
+        },
+        "description": "To get your `access_token`, follow the instructions in the integration documentation for legacy Nest accounts. Please paste it below.",
+        "title": "Nest account authentication"
+      },
       "user": {
         "data": {
-          "event_poll_interval": "Camera Event Poll Interval (seconds)",
-          "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
-          "enable_protobuf_thermostat": "Enable Protobuf for Thermostats (Experimental)",
-          "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
-          "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
-          "enable_protobuf_camera": "Enable Protobuf for Cameras (Experimental)"
-        }
+          "account_type": "Account type",
+          "field_test": "Use Field Test environment"
+        },
+        "description": "Select your Nest account type.\n\n- **Google Account**: For accounts migrated to Google, or created after August 2019.\n- **Nest Account**: For older, non-migrated legacy Nest accounts.\n\nSelect 'Field Test' if you are part of the Google Field Test program.",
+        "title": "Nest account type"
       }
     }
   },
@@ -112,8 +98,8 @@
       "home_away_mode": {
         "name": "Mode",
         "state": {
-          "home": "Home",
           "away": "Away",
+          "home": "Home",
           "sleep": "Sleep",
           "vacation": "Vacation"
         }
@@ -121,20 +107,19 @@
       "night_light_brightness": {
         "name": "Night Light Brightness",
         "state": {
+          "high": "High",
           "low": "Low",
-          "medium": "Medium",
-          "high": "High"
+          "medium": "Medium"
         }
       }
     },
     "sensor": {
       "backplate_temperature": { "name": "Backplate Temperature" },
       "battery_level": { "name": "Battery Level" },
-      "filter_runtime": { "name": "Filter Runtime" },
       "fan_duration_config": { "name": "Fan Duration Configuration" },
       "fan_timer_timeout": { "name": "Fan Timer Timeout" },
+      "filter_runtime": { "name": "Filter Runtime" },
       "humidity": { "name": "Humidity" },
-      "target_humidity": { "name": "Target Humidity" },
       "last_action": {
         "name": "Last Action",
         "state": {
@@ -142,19 +127,21 @@
           "keypad": "Keypad",
           "physical": "Physical",
           "remote": "Remote",
-          "voice": "Voice Assistant",
-          "unknown": "Unknown"
+          "unknown": "Unknown",
+          "voice": "Voice Assistant"
         }
       },
       "last_audio_self_test": { "name": "Last Audio Self Test" },
       "last_manual_test": { "name": "Last Manual Test" },
       "replace_by": { "name": "Replace By" },
+      "target_humidity": { "name": "Target Humidity" },
       "temperature": { "name": "Temperature" }
     },
     "switch": {
       "audio": { "name": "Audio" },
       "auto_relock": { "name": "Auto-Relock" },
       "camera_streaming": { "name": "Streaming" },
+      "dehumidifier": { "name": "Dehumidifier" },
       "heads_up": { "name": "Heads-Up" },
       "image_rotation": { "name": "Image Rotation" },
       "indoor_chime": { "name": "Indoor Chime" },
@@ -163,9 +150,22 @@
       "pathlight": { "name": "Pathlight" },
       "status_led": { "name": "Status LED" },
       "steam_check": { "name": "Steam Check" },
-      "visitor_announcements": { "name": "Visitor Announcements" },
       "temperature_lock": { "name": "Temperature Lock" },
-      "dehumidifier": { "name": "Dehumidifier" }
+      "visitor_announcements": { "name": "Visitor Announcements" }
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "data": {
+          "enable_protobuf_camera": "Enable Protobuf for Cameras (Experimental)",
+          "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
+          "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
+          "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
+          "enable_protobuf_thermostat": "Enable Protobuf for Thermostats (Experimental)",
+          "event_poll_interval": "Camera Event Poll Interval (seconds)"
+        }
+      }
     }
   }
 }
