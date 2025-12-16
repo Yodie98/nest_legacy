@@ -764,8 +764,8 @@ class NestParser:
 
     def _parse_proto_fan(
         self, traits: dict[str, Any]
-    ) -> tuple[bool, int, int, int, int]:
-        """Extract fan state, timer timeout, speed, duration, and max speed."""
+    ) -> tuple[bool, bool, int, int, int, int]:
+        """Extract fan capability, state, timer timeout, speed, duration, and max speed."""
         fan_trait: nest_hvac_pb2.FanControlSettingsTrait | None = traits.get(
             nest_hvac_pb2.FanControlSettingsTrait.DESCRIPTOR.full_name
         )
@@ -808,8 +808,15 @@ class NestParser:
         fan_caps_trait: nest_hvac_pb2.FanControlCapabilitiesTrait | None = traits.get(
             nest_hvac_pb2.FanControlCapabilitiesTrait.DESCRIPTOR.full_name
         )
+        has_fan = False
         fan_max_speed = 1
         if fan_caps_trait:
+            if (
+                fan_caps_trait.maxAvailableSpeed
+                != nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_OFF
+            ):
+                has_fan = True
+
             if (
                 fan_caps_trait.maxAvailableSpeed
                 == nest_hvac_pb2.FanControlTrait.FanSpeedSetting.FAN_SPEED_SETTING_STAGE1
@@ -836,6 +843,7 @@ class NestParser:
             fan_max_speed = 3
 
         return (
+            has_fan,
             fan_state,
             fan_timer_timeout,
             fan_timer_speed,
@@ -972,6 +980,7 @@ class NestParser:
 
         # Fan (using helper)
         (
+            has_fan,
             fan_state,
             fan_timer_timeout,
             fan_timer_speed,
@@ -1081,7 +1090,7 @@ class NestParser:
             temperature_lock=temperature_lock,
             can_heat=can_heat,
             can_cool=can_cool,
-            has_fan=True,
+            has_fan=has_fan,
             is_protobuf=True,
             has_hot_water_control=has_hot_water_control,
             has_hot_water_temperature=has_hot_water_temperature,
