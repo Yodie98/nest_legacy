@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
-
-from bidict import bidict
 
 from homeassistant.components.water_heater import (
     STATE_OFF,
-    STATE_ON,
     WaterHeaterEntity,
     WaterHeaterEntityFeature,
 )
@@ -21,13 +19,8 @@ from .entity import NestEntity
 from .pynest.enums import HotWaterMode
 from .pynest.models import NestHeatLink
 
-# Bidirectional mapping between Nest API modes and Home Assistant states
-_OPERATION_MODE_BIDICT: bidict[HotWaterMode, str] = bidict(
-    {
-        HotWaterMode.SCHEDULE: STATE_ON,
-        HotWaterMode.OFF: STATE_OFF,
-    }
-)
+MODE_SCHEDULE = "schedule"
+MODE_BOOST = "boost"
 
 
 async def async_setup_entry(
@@ -50,9 +43,10 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
 
     _attr_name = None  # Main feature of the device
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_operation_list = [*_OPERATION_MODE_BIDICT.inverse]
+    _attr_operation_list = [STATE_OFF, MODE_SCHEDULE, MODE_BOOST]
     _attr_min_temp = 30.0
     _attr_max_temp = 70.0
+    _attr_translation_key = "heat_link"
 
     @property
     def supported_features(self) -> WaterHeaterEntityFeature:
@@ -69,7 +63,14 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
     @property
     def current_operation(self) -> str | None:
         """Return current operation."""
-        return _OPERATION_MODE_BIDICT.get(self.device.hot_water_mode)
+        # If boost timer is active, we are in boost mode
+        if self.device.hot_water_boost_time_to_end > 0:
+            return MODE_BOOST
+
+        if self.device.hot_water_mode == HotWaterMode.SCHEDULE:
+            return MODE_SCHEDULE
+
+        return STATE_OFF
 
     @property
     def current_temperature(self) -> float | None:
@@ -86,6 +87,18 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
         """Return true if away mode is on."""
         return self.device.hot_water_away_enabled
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the optional state attributes."""
+        attrs: dict[str, Any] = {
+            "boiler_active": self.device.hot_water_active,
+        }
+        if self.device.hot_water_boost_time_to_end > 0:
+            attrs["boost_timer_end"] = datetime.datetime.fromtimestamp(
+                self.device.hot_water_boost_time_to_end, datetime.UTC
+            )
+        return attrs
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         if temp := kwargs.get("temperature"):
@@ -93,17 +106,30 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
 
     async def async_set_operation_mode(self, operation_mode: str) -> None:
         """Set new target operation mode."""
-        nest_mode = _OPERATION_MODE_BIDICT.inverse.get(operation_mode)
-        if nest_mode:
-            await self._set_device_data({"hot_water_mode": nest_mode.value})
+        if operation_mode == STATE_OFF:
+            # Turn off schedule and cancel any active boost
+            await self._set_device_data(
+                {"hot_water_mode": HotWaterMode.OFF.value, "hot_water_boost": False}
+            )
+        elif operation_mode == MODE_SCHEDULE:
+            # Enable schedule and cancel any active boost
+            await self._set_device_data(
+                {
+                    "hot_water_mode": HotWaterMode.SCHEDULE.value,
+                    "hot_water_boost": False,
+                }
+            )
+        elif operation_mode == MODE_BOOST:
+            # Activate boost (client defaults to 30 mins)
+            await self._set_device_data({"hot_water_boost": True})
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the water heater (activates boost)."""
-        await self._set_device_data({"hot_water_boost": True})
+        """Turn on the water heater (activates schedule)."""
+        await self.async_set_operation_mode(MODE_SCHEDULE)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the water heater (cancels boost)."""
-        await self._set_device_data({"hot_water_boost": False})
+        """Turn off the water heater."""
+        await self.async_set_operation_mode(STATE_OFF)
 
     async def async_turn_away_mode_on(self) -> None:
         """Turn away mode on."""

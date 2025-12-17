@@ -1566,7 +1566,7 @@ class NestParser:
             associated_thermostat_object_key=thermostat.object_key,
             hot_water_active=thermostat.hot_water_active,
             has_hot_water_temperature=thermostat.has_hot_water_temperature,
-            hot_water_boost_active=thermostat.hot_water_boost_time_to_end > 0,
+            hot_water_boost_time_to_end=thermostat.hot_water_boost_time_to_end,
             hot_water_mode=thermostat.hot_water_mode,
             hot_water_away_enabled=thermostat.hot_water_away_enabled,
             current_temperature=thermostat.current_water_temperature,

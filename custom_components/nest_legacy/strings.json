@@ -152,6 +152,15 @@
       "steam_check": { "name": "Steam Check" },
       "temperature_lock": { "name": "Temperature Lock" },
       "visitor_announcements": { "name": "Visitor Announcements" }
+    },
+    "water_heater": {
+      "heat_link": {
+        "state": {
+          "schedule": "Schedule",
+          "boost": "Boost",
+          "off": "Off"
+        }
+      }
     }
   },
   "options": {
