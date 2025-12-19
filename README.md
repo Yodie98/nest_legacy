@@ -75,7 +75,23 @@ This integration creates a rich set of entities for your Nest devices based on t
 
 ### Nest Heat Link (Europe)
 - **Water Heater:** Control hot water heating.
-- **Features:** Set target temperature, toggle Boost mode (On/Off), toggle Away mode.
+- **Operation Modes:** Supports `off`, `schedule`, and `boost`.
+- **Boost Mode:** Activates hot water for 30 minutes. Once the boost timer expires, the device automatically reverts to the previous mode (e.g., `schedule`).
+- **Features:** Set target temperature, toggle Away mode.
+- **Automation:** You can trigger a boost via automation using the `water_heater.set_operation_mode` action:
+
+  ```yaml
+  automation:
+    triggers:
+      - trigger: time
+        at: "07:15:00"
+    actions:
+      - action: water_heater.set_operation_mode
+        target:
+          entity_id: water_heater.nest_heat_link
+        data:
+          operation_mode: boost
+  ```
 
 ### Structure (Home)
 - **Select:** Set the structure mode (Home, Away, Sleep, Vacation).
