@@ -109,7 +109,10 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
         if operation_mode == STATE_OFF:
             # Turn off schedule and cancel any active boost
             await self._set_device_data(
-                {"hot_water_mode": HotWaterMode.OFF.value, "hot_water_boost": False}
+                {
+                    "hot_water_mode": HotWaterMode.OFF.value,
+                    "hot_water_boost": False,
+                }
             )
         elif operation_mode == MODE_SCHEDULE:
             # Enable schedule and cancel any active boost
@@ -120,8 +123,14 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
                 }
             )
         elif operation_mode == MODE_BOOST:
+            # Do not touch hot_water_mode - leave it as-is
             # Activate boost (client defaults to 30 mins)
-            await self._set_device_data({"hot_water_boost": True})
+            await self._set_device_data(
+                {
+                    "hot_water_mode": self.device.hot_water_mode.value,
+                    "hot_water_boost": True,
+                }
+            )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the water heater (activates schedule)."""
