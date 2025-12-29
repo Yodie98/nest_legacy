@@ -156,9 +156,9 @@
     "water_heater": {
       "heat_link": {
         "state": {
-          "schedule": "Schedule",
           "boost": "Boost",
-          "off": "Off"
+          "off": "Off",
+          "schedule": "Schedule"
         }
       }
     }
