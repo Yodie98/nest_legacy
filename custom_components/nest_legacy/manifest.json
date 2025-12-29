@@ -8,5 +8,6 @@
   "documentation": "https://github.com/tronikos/nest_legacy",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/tronikos/nest_legacy/issues",
+  "requirements": ["protobuf>=6.31.1"],
   "version": "0.0.0"
 }
