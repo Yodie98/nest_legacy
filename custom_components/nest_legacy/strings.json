@@ -167,7 +167,7 @@
     "step": {
       "user": {
         "data": {
-          "enable_protobuf_camera": "Enable Protobuf for Cameras (Experimental)",
+          "enable_protobuf_camera": "Enable Protobuf for Cameras (Recommended for Google accounts)",
           "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
           "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
           "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
