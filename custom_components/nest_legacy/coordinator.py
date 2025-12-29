@@ -82,7 +82,8 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 CONF_ENABLE_PROTOBUF_PROTECT, False
             ),
             enable_protobuf_camera=entry.options.get(
-                CONF_ENABLE_PROTOBUF_CAMERA, False
+                CONF_ENABLE_PROTOBUF_CAMERA,
+                entry.data.get(CONF_ACCOUNT_TYPE) == "google",
             ),
         )
         self.parser = NestParser()

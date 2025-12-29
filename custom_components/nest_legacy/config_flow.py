@@ -220,7 +220,8 @@ class NestOptionsFlowHandler(OptionsFlowWithReload):
             vol.Optional(
                 CONF_ENABLE_PROTOBUF_CAMERA,
                 default=self.config_entry.options.get(
-                    CONF_ENABLE_PROTOBUF_CAMERA, False
+                    CONF_ENABLE_PROTOBUF_CAMERA,
+                    self.config_entry.data.get(CONF_ACCOUNT_TYPE) == "google",
                 ),
             ): bool,
         }
