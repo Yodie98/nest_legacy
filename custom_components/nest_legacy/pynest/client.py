@@ -701,7 +701,7 @@ class NestClient:
 
         payload = data.copy()
         if "hot_water_boost" in payload:
-            duration_seconds = 1800  # Default to 30 minutes
+            duration_seconds = payload.pop("hot_water_boost_duration", 1800)
             if payload.pop("hot_water_boost"):
                 end_timestamp = int(time.time()) + duration_seconds
             else:
@@ -730,8 +730,10 @@ class NestClient:
         if "hot_water_boost" in data:
             update_required = True
             is_boost = data["hot_water_boost"]
-            # Default to 30 mins (1800s) if true, 0 if false
-            duration_seconds = 1800 if is_boost else 0
+            # Use provided duration or default to 30 mins (1800s)
+            duration_seconds = (
+                data.get("hot_water_boost_duration", 1800) if is_boost else 0
+            )
 
             # Calculate end time
             end_seconds = int(time.time()) + duration_seconds if is_boost else 0

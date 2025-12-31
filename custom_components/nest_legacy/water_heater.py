@@ -21,6 +21,17 @@ from .pynest.models import NestHeatLink
 
 MODE_SCHEDULE = "schedule"
 MODE_BOOST = "boost"
+MODE_BOOST_30M = "boost_30m"
+MODE_BOOST_1H = "boost_1h"
+MODE_BOOST_2H = "boost_2h"
+
+# Boost duration mapping in seconds
+BOOST_DURATIONS = {
+    MODE_BOOST: 1800,  # 30 minutes (default)
+    MODE_BOOST_30M: 1800,  # 30 minutes
+    MODE_BOOST_1H: 3600,  # 1 hour
+    MODE_BOOST_2H: 7200,  # 2 hours
+}
 
 
 async def async_setup_entry(
@@ -43,7 +54,14 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
 
     _attr_name = None  # Main feature of the device
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_operation_list = [STATE_OFF, MODE_SCHEDULE, MODE_BOOST]
+    _attr_operation_list = [
+        STATE_OFF,
+        MODE_SCHEDULE,
+        MODE_BOOST,
+        MODE_BOOST_30M,
+        MODE_BOOST_1H,
+        MODE_BOOST_2H,
+    ]
     _attr_min_temp = 30.0
     _attr_max_temp = 70.0
     _attr_translation_key = "heat_link"
@@ -63,9 +81,18 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
     @property
     def current_operation(self) -> str | None:
         """Return current operation."""
-        # If boost timer is active, we are in boost mode
-        if self.device.hot_water_boost_time_to_end > 0:
-            return MODE_BOOST
+        # Calculate remaining boost time
+        current_time = datetime.datetime.now(datetime.UTC).timestamp()
+        end_time = self.device.hot_water_boost_time_to_end
+
+        # If the API returns 0 or a past time, boost is off
+        if end_time > current_time:
+            remaining = end_time - current_time
+            if remaining > 3600:
+                return MODE_BOOST_2H
+            if remaining > 1800:
+                return MODE_BOOST_1H
+            return MODE_BOOST_30M
 
         if self.device.hot_water_mode == HotWaterMode.SCHEDULE:
             return MODE_SCHEDULE
@@ -122,13 +149,14 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
                     "hot_water_boost": False,
                 }
             )
-        elif operation_mode == MODE_BOOST:
-            # Do not touch hot_water_mode - leave it as-is
-            # Activate boost (client defaults to 30 mins)
+        elif operation_mode in BOOST_DURATIONS:
             await self._set_device_data(
                 {
+                    # Do not touch hot_water_mode - leave it as-is
                     "hot_water_mode": self.device.hot_water_mode.value,
+                    # Activate boost (with specific or default duration)
                     "hot_water_boost": True,
+                    "hot_water_boost_duration": BOOST_DURATIONS[operation_mode],
                 }
             )
 

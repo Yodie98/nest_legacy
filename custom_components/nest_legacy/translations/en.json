@@ -249,6 +249,9 @@
             "heat_link": {
                 "state": {
                     "boost": "Boost",
+                    "boost_1h": "Boost (1h)",
+                    "boost_2h": "Boost (2h)",
+                    "boost_30m": "Boost (30m)",
                     "off": "Off",
                     "schedule": "Schedule"
                 }
