@@ -27,6 +27,7 @@ from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
 from .pynest.models import (
     NestDevice,
+    NestHeatLink,
     NestLock,
     NestProtect,
     NestTempSensor,
@@ -99,7 +100,7 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        device_types=(NestTempSensor,),
+        device_types=(NestTempSensor, NestThermostat, NestHeatLink),
     ),
     # Thermostat
     NestSensorEntityDescription(
