@@ -85,6 +85,9 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
             | ClimateEntityFeature.TURN_ON
             | ClimateEntityFeature.PRESET_MODE
         )
+        if device.has_dehumidifier or device.has_humidifier:
+            features |= ClimateEntityFeature.TARGET_HUMIDITY
+
         self._attr_supported_features = features
         self._attr_preset_modes = [PRESET_NONE, PRESET_ECO]
 
@@ -146,6 +149,21 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
         return self.device.current_humidity
 
     @property
+    def target_humidity(self) -> float | None:
+        """Return the target humidity."""
+        return self.device.target_humidity
+
+    @property
+    def min_humidity(self) -> float:
+        """Return the minimum humidity."""
+        return 15
+
+    @property
+    def max_humidity(self) -> float:
+        """Return the maximum humidity."""
+        return 90
+
+    @property
     def preset_mode(self) -> str | None:
         """Return the current preset mode, e.g., home, away, temp."""
         return PRESET_ECO if self.device.is_eco_mode else PRESET_NONE
@@ -177,3 +195,7 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
         nest_eco_mode = "manual-eco" if preset_mode == PRESET_ECO else "schedule"
         payload = {"eco": {"mode": nest_eco_mode}}
         await self._set_device_data(payload)
+
+    async def async_set_humidity(self, humidity: int) -> None:
+        """Set new target humidity."""
+        await self._set_device_data({"target_humidity": humidity})
