@@ -156,7 +156,7 @@ class NestParser:
                     ):
                         thermostats.append(device)
                 elif key.startswith("kryptonite."):
-                    device = self._parse_tempsensor(key, value, wheres_map)
+                    device = self._parse_tempsensor(key, value, raw_data, wheres_map)
                 elif key.startswith("quartz."):
                     device = self._parse_camera(key, value, wheres_map)
                 elif key.startswith("structure."):
@@ -188,7 +188,7 @@ class NestParser:
                         and nest_sensor_pb2.HumidityTrait.DESCRIPTOR.full_name
                         not in value
                     ):
-                        device = self._parse_protobuf_sensor(key, value)
+                        device = self._parse_protobuf_sensor(key, value, raw_data)
                     elif (
                         nest_structure_pb2.StructureInfoTrait.DESCRIPTOR.full_name
                         in value
@@ -469,9 +469,36 @@ class NestParser:
         )
 
     def _parse_tempsensor(
-        self, key: str, value: dict[str, Any], wheres_map: dict[str, str]
+        self,
+        key: str,
+        value: dict[str, Any],
+        raw_data: dict[str, Any],
+        wheres_map: dict[str, str],
     ) -> NestTempSensor | None:
         """Parse a Nest Temperature Sensor."""
+        # Legacy API: Check rcs_settings to find association and active status
+        associated_thermostat = None
+        is_active = False
+
+        # Iterate all rcs_settings buckets to find which one contains this sensor
+        for rcs_key, rcs_data in raw_data.items():
+            if not rcs_key.startswith("rcs_settings."):
+                continue
+
+            rcs_val = rcs_data.get("value", {}) if "value" in rcs_data else rcs_data
+
+            associated_sensors = rcs_val.get("associated_rcs_sensors", [])
+            if key in associated_sensors:
+                # Found the thermostat this sensor belongs to
+                device_id = rcs_key.split(".")[1]
+                associated_thermostat = f"device.{device_id}"
+
+                # Check if active
+                active_sensors = rcs_val.get("active_rcs_sensors", [])
+                if key in active_sensors:
+                    is_active = True
+                break
+
         return NestTempSensor(
             object_key=key,
             serial_number=value.get("serial_number", key.split(".")[1]),
@@ -483,6 +510,8 @@ class NestParser:
             < 3600 * 4,
             current_temperature=value.get("current_temperature"),
             battery_level=value.get("battery_level", 0.0),
+            associated_thermostat_object_key=associated_thermostat,
+            is_active_sensor=is_active,
         )
 
     def _parse_camera(
@@ -1411,7 +1440,7 @@ class NestParser:
         )
 
     def _parse_protobuf_sensor(
-        self, key: str, traits: dict[str, Any]
+        self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
     ) -> NestTempSensor | None:
         """Parse a Nest Temperature Sensor from protobuf data."""
         # Ensure it's a sensor and not a thermostat (thermostats also have temperature)
@@ -1427,6 +1456,38 @@ class NestParser:
         )
         if not temp_trait:
             return None
+
+        # Determine Active Status by looking at all thermostats in raw_data
+        associated_thermostat = None
+        is_active = False
+
+        for potential_key, potential_traits in raw_data.items():
+            rcs_trait: nest_hvac_pb2.RemoteComfortSensingSettingsTrait | None = (
+                potential_traits.get(
+                    nest_hvac_pb2.RemoteComfortSensingSettingsTrait.DESCRIPTOR.full_name
+                )
+            )
+
+            if not rcs_trait:
+                continue
+
+            # Check if this sensor is in the associated list of this thermostat
+            is_associated = False
+            for sensor in rcs_trait.associatedRcsSensors:
+                if sensor.deviceId.resourceId == key:
+                    is_associated = True
+                    break
+
+            if is_associated:
+                associated_thermostat = potential_key
+                # Check if it is the currently selected active sensor
+                if (
+                    rcs_trait.activeRcsSelection.rcsSourceType
+                    == nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType.RCS_SOURCE_TYPE_SINGLE_SENSOR
+                    and rcs_trait.activeRcsSelection.activeRcsSensor.resourceId == key
+                ):
+                    is_active = True
+                break
 
         # Identity
         identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
@@ -1488,6 +1549,8 @@ class NestParser:
             current_temperature=temp_trait.temperatureValue.temperature.value,
             battery_level=battery_level,
             is_protobuf=True,
+            associated_thermostat_object_key=associated_thermostat,
+            is_active_sensor=is_active,
         )
 
     def _parse_protobuf_structure(

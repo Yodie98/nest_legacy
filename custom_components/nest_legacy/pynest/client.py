@@ -37,6 +37,7 @@ from .models import (
     NestProtect,
     NestSession,
     NestStructure,
+    NestTempSensor,
     NestThermostat,
 )
 from .protobuf_gen.nest.trait import (
@@ -1615,6 +1616,87 @@ class NestClient:
                 await self._async_set_generic_property(device.object_key, data)
         else:
             await self._async_set_generic_property(device.object_key, data)
+
+    async def async_set_sensor_active(
+        self, device: NestTempSensor, active: bool
+    ) -> None:
+        """Set a temperature sensor as the active sensor for its thermostat."""
+        if not device.associated_thermostat_object_key:
+            _LOGGER.warning(
+                "Sensor %s is not associated with any thermostat", device.name
+            )
+            return
+
+        if device.is_protobuf:
+            await self._async_set_protobuf_sensor_active(device, active)
+        else:
+            await self._async_set_legacy_sensor_active(device, active)
+
+    async def _async_set_protobuf_sensor_active(
+        self, device: NestTempSensor, active: bool
+    ) -> None:
+        """Set active sensor via Protobuf."""
+        # We need the current RCS trait to ensure we don't wipe other settings
+        # The RCS trait lives on the Thermostat (associated_thermostat_object_key)
+        thermostat_key = device.associated_thermostat_object_key
+        if not thermostat_key:
+            _LOGGER.warning(
+                "Sensor %s is not associated with any thermostat", device.name
+            )
+            return
+        current_traits = self._raw_data.get(thermostat_key)
+
+        rcs_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.RemoteComfortSensingSettingsTrait
+        )
+
+        if active:
+            # Switch to Single Sensor mode using this sensor ID
+            rcs_trait.activeRcsSelection.rcsSourceType = nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType.RCS_SOURCE_TYPE_SINGLE_SENSOR
+            rcs_trait.activeRcsSelection.activeRcsSensor.resourceId = device.object_key
+        else:
+            # Switch back to Backplate (Thermostat built-in sensor)
+            rcs_trait.activeRcsSelection.rcsSourceType = nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType.RCS_SOURCE_TYPE_BACKPLATE
+            # Clear the active sensor field
+            rcs_trait.activeRcsSelection.ClearField("activeRcsSensor")
+
+        any_proto = google.protobuf.any_pb2.Any()
+        any_proto.Pack(rcs_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX)
+
+        req = v1_pb2.TraitUpdateStateRequest(
+            traitRequest=v1_pb2.TraitRequest(
+                resourceId=thermostat_key,
+                traitLabel="remote_comfort_sensing_settings",
+                requestId=str(uuid.uuid4()),
+            ),
+            state=any_proto,
+        )
+        await self._async_update_trait_state(req)
+
+    async def _async_set_legacy_sensor_active(
+        self, device: NestTempSensor, active: bool
+    ) -> None:
+        """Set active sensor via Legacy API."""
+        # For legacy, the key is usually device.<serial>, but rcs_settings uses the serial directly
+        # rcs_settings.<serial>
+        thermostat_key = device.associated_thermostat_object_key
+        if not thermostat_key:
+            _LOGGER.warning(
+                "Sensor %s is not associated with any thermostat", device.name
+            )
+            return
+        device_id = thermostat_key.split(".")[1]
+        rcs_key = f"rcs_settings.{device_id}"
+
+        if active:
+            payload = {
+                "active_rcs_sensors": [device.object_key],
+                "rcs_control_setting": "OVERRIDE",
+            }
+        else:
+            payload = {"active_rcs_sensors": [], "rcs_control_setting": "OFF"}
+
+        await self._async_set_generic_property(rcs_key, payload)
 
     async def async_get_camera_snapshot(self, device: NestCamera) -> bytes | None:
         """Get a snapshot from a camera."""

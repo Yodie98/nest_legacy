@@ -18,6 +18,7 @@ from .pynest.models import (
     NestDoorbell,
     NestLock,
     NestProtect,
+    NestTempSensor,
     NestThermostat,
 )
 
@@ -135,6 +136,14 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:water-off",
         device_types=(NestThermostat,),
     ),
+    # Temp Sensor
+    NestSwitchEntityDescription(
+        key="is_active_sensor",
+        translation_key="active_sensor",
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:thermometer-check",
+        device_types=(NestTempSensor,),
+    ),
 )
 
 
@@ -145,18 +154,33 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Nest switches from a config entry."""
     coordinator = entry.runtime_data
-    entities = [
-        NestSwitch(coordinator, device, description)
-        for device in coordinator.data.values()
-        for description in _DESCRIPTIONS
-        if isinstance(device, description.device_types)
-        and getattr(device, description.key) is not None
-        # Handle optional capabilities: check for existence of capability flag if relevant
-        and (
-            description.key != "dehumidifier_state"
-            or getattr(device, "has_dehumidifier", True)
-        )
-    ]
+    entities = []
+    for device in coordinator.data.values():
+        for description in _DESCRIPTIONS:
+            if not isinstance(device, description.device_types):
+                continue
+
+            # Special check for Active Sensor switch: only if associated with thermostat
+            if (
+                description.key == "is_active_sensor"
+                and isinstance(device, NestTempSensor)
+                and not device.associated_thermostat_object_key
+            ):
+                continue
+
+            if (
+                hasattr(device, description.key)
+                and getattr(device, description.key) is not None
+            ):
+                # Handle optional capabilities (like dehumidifier)
+                if (
+                    description.key == "dehumidifier_state"
+                    and not getattr(device, "has_dehumidifier", True)
+                ):
+                    continue
+
+                entities.append(NestSwitch(coordinator, device, description))
+
     async_add_devices(entities)
 
 
@@ -192,6 +216,11 @@ class NestSwitch(NestEntity, SwitchEntity):
     async def _set_state(self, state: bool) -> None:
         """Set the state of the switch."""
         key = self.entity_description.key
-        value = state
 
+        # Special handling for Sensor Active switch
+        if key == "is_active_sensor" and isinstance(self.device, NestTempSensor):
+            await self.coordinator.client.async_set_sensor_active(self.device, state)
+            return
+
+        value = state
         await self._set_device_data({key: value})

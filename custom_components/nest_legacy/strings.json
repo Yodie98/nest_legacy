@@ -138,6 +138,7 @@
       "temperature": { "name": "Temperature" }
     },
     "switch": {
+      "active_sensor": { "name": "Control Thermostat" },
       "audio": { "name": "Audio" },
       "auto_relock": { "name": "Auto-Relock" },
       "camera_streaming": { "name": "Streaming" },

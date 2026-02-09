@@ -202,6 +202,9 @@
             }
         },
         "switch": {
+            "active_sensor": {
+                "name": "Control Thermostat"
+            },
             "audio": {
                 "name": "Audio"
             },

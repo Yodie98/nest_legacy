@@ -146,6 +146,8 @@ class NestTempSensor(NestDevice):
 
     current_temperature: float | None = None
     battery_level: float = 0.0
+    associated_thermostat_object_key: str | None = None
+    is_active_sensor: bool = False
 
 
 @dataclass(frozen=True)
