@@ -1532,13 +1532,17 @@ class NestParser:
             battery_trait: weave_power_pb2.BatteryPowerSourceTrait | None = traits.get(
                 weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
             )
-            battery_level = (
-                _scale_value(
-                    battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
-                )
-                if battery_trait
-                else 0.0
-            )
+            if battery_trait:
+                if battery_trait.HasField(
+                    "remaining"
+                ) and battery_trait.remaining.HasField("remainingPercent"):
+                    battery_level = _scale_value(
+                        battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
+                    )
+                elif battery_trait.HasField("assessedVoltage"):
+                    # Convert V to mV
+                    voltage_mv = int(battery_trait.assessedVoltage.value * 1000)
+                    battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
 
         return NestTempSensor(
             object_key=key,
