@@ -173,9 +173,8 @@ async def async_setup_entry(
                 and getattr(device, description.key) is not None
             ):
                 # Handle optional capabilities (like dehumidifier)
-                if (
-                    description.key == "dehumidifier_state"
-                    and not getattr(device, "has_dehumidifier", True)
+                if description.key == "dehumidifier_state" and not getattr(
+                    device, "has_dehumidifier", True
                 ):
                     continue
 
