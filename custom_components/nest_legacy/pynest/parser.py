@@ -913,12 +913,26 @@ class NestParser:
         )
 
         # Temperature
+        # Prefer the label-specific key to avoid getting backplate_temperature
+        # when multiple TemperatureTrait instances exist on the same device.
         temp_trait: nest_sensor_pb2.TemperatureTrait | None = traits.get(
-            nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name
-        )
+            "current_temperature"
+        ) or traits.get(nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name)
         current_temperature = (
             temp_trait.temperatureValue.temperature.value
             if temp_trait and temp_trait.HasField("temperatureValue")
+            else None
+        )
+
+        # Backplate temperature (separate TemperatureTrait with label
+        # "backplate_temperature", stored under its traitLabel key).
+        backplate_temp_trait: nest_sensor_pb2.TemperatureTrait | None = traits.get(
+            "backplate_temperature"
+        )
+        backplate_temperature = (
+            backplate_temp_trait.temperatureValue.temperature.value
+            if backplate_temp_trait
+            and backplate_temp_trait.HasField("temperatureValue")
             else None
         )
 
@@ -1101,6 +1115,7 @@ class NestParser:
             software_version=software_version,
             online=online,
             current_temperature=current_temperature,
+            backplate_temperature=backplate_temperature,
             target_temperature=target_temperature,
             target_temperature_low=target_temperature_low,
             target_temperature_high=target_temperature_high,

@@ -193,6 +193,17 @@ _TRAIT_TYPE_TO_CLASS_MAP = {
     trait.DESCRIPTOR.full_name: trait for trait in _ALL_POSSIBLE_TRAITS
 }
 
+# Trait labels that should be stored by label in addition to descriptor_full_name.
+# This is needed when the same trait type appears multiple times on a device
+# under different labels (e.g. "current_temperature" vs "backplate_temperature"
+# both use TemperatureTrait).
+_LABEL_SPECIFIC_TRAITS: frozenset[str] = frozenset(
+    {
+        "backplate_temperature",
+        "current_temperature",
+    }
+)
+
 _USER_AGENT = "Nest/5.82.2 (iOScom.nestlabs.jasper.release) os=18.5"
 
 _NEST_ENVIRONMENTS: dict[str, NestEnvironment] = {
@@ -2050,8 +2061,23 @@ class NestClient:
                                 state.patch.values.Unpack(unpacked_message)
 
                                 resource_id = state.traitId.resourceId
+                                trait_label = state.traitId.traitLabel
                                 if resource_id not in updates:
                                     updates[resource_id] = {}
+
+                                # Store by traitLabel for labels that need
+                                # label-specific access.
+                                # Prioritize ACCEPTED over CONFIRMED.
+                                if (
+                                    trait_label
+                                    and trait_label in _LABEL_SPECIFIC_TRAITS
+                                    and not (
+                                        trait_label in updates[resource_id]
+                                        and state.stateTypes != v2_pb2.ACCEPTED
+                                    )
+                                ):
+                                    updates[resource_id][trait_label] = unpacked_message
+
                                 # Prioritize ACCEPTED over CONFIRMED.
                                 # If we already have data for this trait in this batch,
                                 # and the current update is NOT ACCEPTED, ignore it.
@@ -2059,6 +2085,22 @@ class NestClient:
                                     descriptor_full_name in updates[resource_id]
                                     and state.stateTypes != v2_pb2.ACCEPTED
                                 ):
+                                    # Warn about label collisions for traits not
+                                    # in the label-specific allowlist.
+                                    if (
+                                        trait_label
+                                        and trait_label not in _LABEL_SPECIFIC_TRAITS
+                                    ):
+                                        _LOGGER.warning(
+                                            "Multiple traits of type %s on %s "
+                                            "with different labels (got %r), "
+                                            "only one will be used. Consider "
+                                            "adding the label to "
+                                            "_LABEL_SPECIFIC_TRAITS",
+                                            descriptor_full_name,
+                                            resource_id,
+                                            trait_label,
+                                        )
                                     continue
                                 updates[resource_id][descriptor_full_name] = (
                                     unpacked_message

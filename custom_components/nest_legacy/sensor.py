@@ -131,7 +131,6 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_types=(NestThermostat,),
-        entity_registry_enabled_default=False,
     ),
     NestSensorEntityDescription(
         key="filter_runtime",
