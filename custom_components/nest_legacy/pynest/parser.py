@@ -1203,16 +1203,39 @@ class NestParser:
             else True
         )
 
-        batt_voltage_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
-            nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+        # Check both battery banks if available
+        batt_0: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            "battery_voltage_bank0"
         )
+        batt_1: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            "battery_voltage_bank1"
+        )
+        # Fallback to generic descriptor if specific banks not found
+        if not batt_0 and not batt_1:
+            batt_generic = traits.get(
+                nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+            )
+            # Assign to batt_1 to use in level calculation logic below
+            batt_1 = batt_generic
+
+        # Calculate battery level (prefer bank1)
+        target_batt = batt_1 or batt_0
         battery_level = (
             _milli_volt_to_percentage(
-                int(1000 * batt_voltage_trait.batteryValue.batteryVoltage.value)
+                int(1000 * target_batt.batteryValue.batteryVoltage.value)
             )
-            if batt_voltage_trait
+            if target_batt
+            and target_batt.HasField("batteryValue")
+            and target_batt.batteryValue.HasField("batteryVoltage")
             else 0.0
         )
+
+        # Calculate health state: 1 if ANY bank has fault finding, else 0
+        battery_health_state = 0
+        if (batt_0 and batt_0.HasField("faultInformation")) or (
+            batt_1 and batt_1.HasField("faultInformation")
+        ):
+            battery_health_state = 1
 
         smoke_status = (
             safety_smoke.alarmState
@@ -1291,7 +1314,7 @@ class NestParser:
                 smoke_status=smoke_status,
                 co_status=co_status,
                 battery_level=battery_level,
-                battery_health_state=0,
+                battery_health_state=battery_health_state,
                 line_power_present=True,
                 night_light_enable=night_light_enable,
                 steam_detection_enable=steam_detection_enable,
@@ -1320,7 +1343,7 @@ class NestParser:
             smoke_status=smoke_status,
             co_status=co_status,
             battery_level=battery_level,
-            battery_health_state=0,
+            battery_health_state=battery_health_state,
             night_light_enable=night_light_enable,
             steam_detection_enable=steam_detection_enable,
             night_light_brightness=night_light_brightness,

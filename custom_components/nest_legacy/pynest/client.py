@@ -201,6 +201,8 @@ _LABEL_SPECIFIC_TRAITS: frozenset[str] = frozenset(
     {
         "backplate_temperature",
         "current_temperature",
+        "battery_voltage_bank0",
+        "battery_voltage_bank1",
     }
 )
 
@@ -2041,6 +2043,65 @@ class NestClient:
 
                         # Iterate through the list of actual response messages within the frame.
                         for inner_response in outer_response.observeResponse:
+                            # Pass 1: Check for label collisions and log warnings
+                            # with full details.
+                            seen_labels: dict[str, dict[str, tuple[str, Any]]] = {}
+                            for state in inner_response.traitStates:
+                                type_url = state.patch.values.type_url
+                                descriptor_full_name = type_url.removeprefix(
+                                    _NESTLABS_TYPE_URL_PREFIX
+                                )
+                                resource_id = state.traitId.resourceId
+                                trait_label = state.traitId.traitLabel
+
+                                if trait_label.endswith("_bucketized"):
+                                    continue
+
+                                if resource_id not in seen_labels:
+                                    seen_labels[resource_id] = {}
+
+                                existing = seen_labels[resource_id].get(
+                                    descriptor_full_name
+                                )
+                                if existing:
+                                    prev_label, prev_state = existing
+                                    if (
+                                        prev_label != trait_label
+                                        and prev_label not in _LABEL_SPECIFIC_TRAITS
+                                        and trait_label not in _LABEL_SPECIFIC_TRAITS
+                                    ):
+                                        # Collision! Unpack both to log full details.
+                                        target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(
+                                            descriptor_full_name
+                                        )
+                                        if target_class:
+                                            msg1 = target_class()
+                                            prev_state.patch.values.Unpack(msg1)
+                                            msg2 = target_class()
+                                            state.patch.values.Unpack(msg2)
+                                            _LOGGER.warning(
+                                                "Multiple traits of type %s on %s "
+                                                "with different labels "
+                                                "('%s' and '%s'), only one will "
+                                                "be used. Consider adding labels "
+                                                "to _LABEL_SPECIFIC_TRAITS.\n"
+                                                "Value 1 (%s): %s\n"
+                                                "Value 2 (%s): %s",
+                                                descriptor_full_name,
+                                                resource_id,
+                                                prev_label,
+                                                trait_label,
+                                                prev_label,
+                                                msg1,
+                                                trait_label,
+                                                msg2,
+                                            )
+
+                                seen_labels[resource_id][descriptor_full_name] = (
+                                    trait_label,
+                                    state,
+                                )
+
                             updates: dict[str, dict[str, Any]] = {}
                             for state in inner_response.traitStates:
                                 type_url = state.patch.values.type_url
@@ -2062,6 +2123,10 @@ class NestClient:
 
                                 resource_id = state.traitId.resourceId
                                 trait_label = state.traitId.traitLabel
+
+                                if trait_label.endswith("_bucketized"):
+                                    continue
+
                                 if resource_id not in updates:
                                     updates[resource_id] = {}
 
@@ -2085,23 +2150,8 @@ class NestClient:
                                     descriptor_full_name in updates[resource_id]
                                     and state.stateTypes != v2_pb2.ACCEPTED
                                 ):
-                                    # Warn about label collisions for traits not
-                                    # in the label-specific allowlist.
-                                    if (
-                                        trait_label
-                                        and trait_label not in _LABEL_SPECIFIC_TRAITS
-                                    ):
-                                        _LOGGER.warning(
-                                            "Multiple traits of type %s on %s "
-                                            "with different labels (got %r), "
-                                            "only one will be used. Consider "
-                                            "adding the label to "
-                                            "_LABEL_SPECIFIC_TRAITS",
-                                            descriptor_full_name,
-                                            resource_id,
-                                            trait_label,
-                                        )
                                     continue
+
                                 updates[resource_id][descriptor_full_name] = (
                                     unpacked_message
                                 )
