@@ -4,13 +4,13 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
-This is a custom component for Home Assistant to integrate a wide range of Nest devices using an unofficial web API. It serves as an alternative to the official Nest integration, providing support for devices not available through Google's official Smart Device Management (SDM) API, such as the Nest Protect, Nest x Yale Lock, and Nest Heat Link.
+This is a custom component for Home Assistant to integrate a wide range of Nest devices using an unofficial web API (combining REST streaming and Protobuf). It serves as an alternative to the official Nest integration, providing support for devices not available through Google's official Smart Device Management (SDM) API, such as the Nest Protect, Nest x Yale Lock, and Nest Heat Link.
 
-This integration provides real-time updates for most sensors and controls by maintaining a persistent connection to the Nest API.
+This integration provides real-time updates for most sensors and controls by maintaining persistent connections to the Nest API.
 
 ## Why use Nest Legacy?
 
-The official Home Assistant Nest integration uses Google's Smart Device Management (SDM) API, which has a limited set of supported devices and requires a one-time $5 fee. This **Nest Legacy** integration uses the same unofficial API that the Nest mobile and web apps use, offering several key advantages.
+The official Home Assistant Nest integration uses Google's Smart Device Management (SDM) API, which has a limited set of supported devices and requires a one-time $5 fee. This **Nest Legacy** integration uses the same unofficial APIs that the Nest mobile and web apps use, offering several key advantages.
 
 ### Comparison with the Official Nest Integration
 
@@ -20,14 +20,14 @@ The official Home Assistant Nest integration uses Google's Smart Device Manageme
 | **Cost**                 | Free                                                            | $5 USD one-time fee required by Google                         |
 | **Authentication**       | Access Token (Nest Account) or Cookies (Google Account)         | OAuth2 with Google Cloud Project                               |
 | **Supported Devices**    | Wider range, including **Nest Protect**, **Nest Temp Sensors**, **Nest x Yale Locks**, and **Nest Heat Link**. | Limited to newer Thermostats, Cameras, and Doorbells.         |
-| **Data Updates**         | Push-based (Subscriber)                                         | Push-based (Pub/Sub)                                           |
+| **Data Updates**         | Push-based (Subscriber/Observer)                                | Push-based (Pub/Sub)                                           |
 | **Stability**            | Relies on an unofficial API that could change or break without notice. | Officially supported by Google, more stable long-term.        |
 
 **In short, use this integration if you want to:**
 
 - Integrate Nest Protects, Temperature Sensors, Locks, or Heat Links.
 - Avoid the $5 Google API fee.
-- Access features not exposed by the official API (e.g., specific component health tests, Heat Link boost).
+- Access features not exposed by the official API (e.g., Protect component health tests, Heat Link boost, controlling Thermostat via specific Temp Sensors).
 
 ## Supported Devices
 
@@ -46,11 +46,15 @@ This integration supports a wide variety of Nest devices:
 This integration creates a rich set of entities for your Nest devices based on their capabilities.
 
 ### Nest Thermostat
-- **Climate:** Full control over temperature, HVAC modes (Heat, Cool, Heat/Cool, Off), and Eco presets.
+- **Climate:** Full control over temperature, HVAC modes (Heat, Cool, Heat/Cool, Off), and Presets (None, Eco). Supports Target Humidity if a humidifier/dehumidifier is present.
 - **Fan:** Independent control of the fan (On/Off, Speed/Percentage).
 - **Sensors:** Current Temperature, Target Temperature, Humidity, Target Humidity, Backplate Temperature, Filter Runtime.
-- **Binary Sensors:** Occupancy, Leaf status, Filter Replacement Needed.
-- **Switches:** Temperature Lock, Dehumidifier state.
+- **Binary Sensors:** Occupancy, Leaf status (Eco indicator), Filter Replacement Needed.
+- **Switches:** Temperature Lock, Dehumidifier State.
+
+### Nest Temperature Sensor
+- **Sensors:** Current Temperature, Battery Level.
+- **Switch:** **Control Thermostat** (Active Sensor). Turning this switch on forces the associated thermostat to use this sensor's reading for climate control.
 
 ### Nest Protect
 - **Binary Sensors:** Smoke Status, CO Status, Heat Status.
@@ -68,7 +72,7 @@ This integration creates a rich set of entities for your Nest devices based on t
 
 ### Nest x Yale Lock
 - **Lock:** Lock and unlock control.
-- **Sensors:** Battery Level, Last Actor (who locked/unlocked: Keypad, Manual, Remote, etc.).
+- **Sensors:** Battery Level, Last Actor (who locked/unlocked: Keypad, Manual, Remote, Voice, etc.).
 - **Binary Sensor:** Tamper detection.
 - **Switch:** Auto-Relock enable/disable.
 - **Number:** Configure the Auto-Relock duration (seconds).
@@ -153,7 +157,7 @@ If you are part of the Google Field Test program, check the "Use Field Test envi
 Once set up, you can click "Configure" on the integration entry to tweak settings:
 
 *   **Camera Event Poll Interval:** How often to check for new camera events (default: 5 seconds).
-*   **Protobuf Options:** Enable/Disable the use of the newer Protobuf API for specific device types (Locks, Thermostats, Protects, etc.).
+*   **Protobuf Options:** Enable/Disable the use of the newer Protobuf API for specific device types (Locks, Thermostats, Protects, Structure, Cameras).
 
 ## Troubleshooting
 
