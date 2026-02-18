@@ -9,7 +9,13 @@ from typing import Any, TypeVar
 from urllib.parse import urljoin
 import uuid
 
-from aiohttp import ClientSession, ClientTimeout, ContentTypeError, FormData
+from aiohttp import (
+    ClientError,
+    ClientSession,
+    ClientTimeout,
+    ContentTypeError,
+    FormData,
+)
 import google.protobuf.any_pb2
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
@@ -2164,6 +2170,9 @@ class NestClient:
             _LOGGER.debug(
                 "Stream connection timed out due to inactivity. The stream will need to be restarted"
             )
+        except (ClientError, OSError) as err:
+            _LOGGER.debug("Observe stream connection error: %s", err)
+            raise PynestException(f"Observe stream failed: {err}") from err
         except Exception as err:
             _LOGGER.exception("Observe stream failed")
             raise PynestException(f"Observe stream failed: {err}") from err
