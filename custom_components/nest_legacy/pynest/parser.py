@@ -1239,13 +1239,13 @@ class NestParser:
 
         smoke_status = (
             safety_smoke.alarmState
-            == nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_ALARM
+            != nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_IDLE
             if safety_smoke
             else False
         )
         co_status = (
             safety_co.alarmState
-            == nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_ALARM
+            != nest_safety_pb2.SafetyAlarmTrait.AlarmState.ALARM_STATE_IDLE
             if safety_co
             else False
         )
