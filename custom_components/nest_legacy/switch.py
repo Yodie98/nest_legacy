@@ -160,6 +160,13 @@ async def async_setup_entry(
             if not isinstance(device, description.device_types):
                 continue
 
+            if (
+                description.key == "indoor_chime_enabled"
+                and isinstance(device, NestDoorbell)
+                and not device.has_indoor_chime
+            ):
+                continue
+
             # Special check for Active Sensor switch: only if associated with thermostat
             if (
                 description.key == "is_active_sensor"

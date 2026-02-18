@@ -535,6 +535,7 @@ class NestParser:
                 audio_enabled=value.get("audio_input_enabled", False),
                 is_streaming="streaming" in streaming_state,
                 indoor_chime_enabled=props.get("doorbell.indoor_chime.enabled", False),
+                has_indoor_chime="indoor_chime" in value.get("capabilities", []),
                 doorbell_chime_assist_enabled=props.get(
                     "doorbell.chime_assist.enabled", False
                 ),
@@ -1449,6 +1450,12 @@ class NestParser:
         indoor_chime_enabled = (
             indoor_chime_trait.chimeEnabled if indoor_chime_trait else False
         )
+        has_indoor_chime = False
+        if indoor_chime_trait:
+            has_indoor_chime = indoor_chime_trait.chimeType in (
+                nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.ChimeType.CHIME_TYPE_MECHANICAL,
+                nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.ChimeType.CHIME_TYPE_ELECTRONIC,
+            )
 
         # Snapshot / Live Image URL
         upload_live_image_trait: nest_camera_pb2.UploadLiveImageTrait | None = (
@@ -1477,6 +1484,7 @@ class NestParser:
                 or "https://nexusapi.dropcam.com",
                 web_url=f"https://home.nest.com/camera/{key}",
                 indoor_chime_enabled=indoor_chime_enabled,
+                has_indoor_chime=has_indoor_chime,
                 is_protobuf=True,
             )
 

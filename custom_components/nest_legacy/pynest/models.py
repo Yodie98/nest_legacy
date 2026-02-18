@@ -171,6 +171,7 @@ class NestDoorbell(NestCamera):
 
     indoor_chime_enabled: bool = False
     doorbell_chime_assist_enabled: bool = False
+    has_indoor_chime: bool = False
 
 
 @dataclass(frozen=True)
