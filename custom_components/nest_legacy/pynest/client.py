@@ -125,6 +125,7 @@ _OBSERVE_PROTECT_TRAITS = (
     # nest_sensor_pb2.AmbientLightTrait,
     # Protect
     nest_protect_pb2.AudioTestTrait,
+    nest_protect_pb2.LegacyProtectDeviceInfoTrait,
     # nest_protect_pb2.SelfTestTrait,
     # nest_protect_pb2.ProtectDeviceInfoTrait,
     # nest_protect_pb2.SafetySummaryTrait,
