@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import datetime
 import logging
+import time
 from typing import Any
 
 from .enums import (
@@ -166,7 +167,9 @@ class NestParser:
                     if weave_security_pb2.BoltLockTrait.DESCRIPTOR.full_name in value:
                         device = self._parse_protobuf_lock(key, value)
                     elif nest_hvac_pb2.HvacControlTrait.DESCRIPTOR.full_name in value:
-                        if device := self._parse_protobuf_thermostat(key, value):
+                        if device := self._parse_protobuf_thermostat(
+                            key, value, raw_data
+                        ):
                             thermostats.append(device)
                     elif (
                         nest_sensor_pb2.SmokeTrait.DESCRIPTOR.full_name in value
@@ -782,6 +785,8 @@ class NestParser:
             or hvac_trait.hvacState.heatStage3Active
             or hvac_trait.hvacState.auxiliaryHeatActive
             or hvac_trait.hvacState.emergencyHeatActive
+            or hvac_trait.hvacState.alternateHeatStage1Active
+            or hvac_trait.hvacState.alternateHeatStage2Active
         ):
             hvac_state = ThermostatHvacState.HEATING
         elif (
@@ -799,17 +804,12 @@ class NestParser:
         fan_trait: nest_hvac_pb2.FanControlSettingsTrait | None = traits.get(
             nest_hvac_pb2.FanControlSettingsTrait.DESCRIPTOR.full_name
         )
-        fan_state = (
-            fan_trait.mode
-            == nest_hvac_pb2.FanControlSettingsTrait.FanMode.FAN_MODE_CONTINUOUS_ON
-            if fan_trait
-            else False
-        )
         fan_timer_timeout = (
             fan_trait.timerEnd.ToSeconds()
             if fan_trait and fan_trait.HasField("timerEnd")
             else 0
         )
+        fan_state = fan_timer_timeout > time.time()
 
         fan_timer_speed = 1
         if fan_trait and fan_trait.timerSpeed:
@@ -881,8 +881,36 @@ class NestParser:
             fan_max_speed,
         )
 
+    def _parse_protobuf_thermostat_model(self, traits: dict[str, Any]) -> str:
+        """Determine thermostat model from resource type."""
+        resource_type = traits.get("_resource_type")
+        if resource_type:
+            if resource_type in {
+                "nest.resource.NestLearningThermostat3Resource",
+                "nest.resource.NestLearningThermostat3v2Resource",
+                "nest.resource.NestAmber2DisplayResource",
+            }:
+                return "Learning Thermostat (3rd gen)"
+            if resource_type == "google.resource.GoogleZirconium1Resource":
+                return "Thermostat (2020)"
+            if resource_type == "google.resource.GoogleBismuth1Resource":
+                return "Learning Thermostat (4th gen)"
+            if resource_type in {
+                "nest.resource.NestOnyxResource",
+                "nest.resource.NestAgateDisplayResource",
+            }:
+                return "Thermostat E"
+            if resource_type in {
+                "nest.resource.NestLearningThermostat2Resource",
+                "nest.resource.NestAmber1DisplayResource",
+            }:
+                return "Learning Thermostat (2nd gen)"
+            if resource_type == "nest.resource.NestLearningThermostat1Resource":
+                return "Learning Thermostat (1st gen)"
+        return "Thermostat"
+
     def _parse_protobuf_thermostat(
-        self, key: str, traits: dict[str, Any]
+        self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
     ) -> NestThermostat | None:
         """Parse a Nest Thermostat from protobuf data."""
         hvac_trait: nest_hvac_pb2.HvacControlTrait | None = traits.get(
@@ -897,6 +925,8 @@ class NestParser:
         )
         serial_number = identity_trait.serialNumber if identity_trait else key
         software_version = identity_trait.softwareVersion if identity_trait else None
+
+        model = self._parse_protobuf_thermostat_model(traits)
 
         label_trait: weave_description_pb2.LabelSettingsTrait | None = traits.get(
             weave_description_pb2.LabelSettingsTrait.DESCRIPTOR.full_name
@@ -1107,12 +1137,37 @@ class NestParser:
             if heat_link_trait.HasField("heatLinkSwVersion"):
                 heat_link_sw_version = heat_link_trait.heatLinkSwVersion.value
 
+        # Battery
+        batt_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+        )
+        battery_level = 0.0
+        if batt_trait and batt_trait.HasField("batteryValue"):
+            volts = batt_trait.batteryValue.batteryVoltage.value
+            if model == "Thermostat (2020)":
+                battery_level = _scale_value(volts, 2.9, 3.15, 0, 100)
+            else:
+                battery_level = _scale_value(volts, 3.6, 3.9, 0, 100)
+
+        # Occupancy
+        occupancy = False
+        for r_traits in raw_data.values():
+            struct_mode = r_traits.get(
+                nest_occupancy_pb2.StructureModeTrait.DESCRIPTOR.full_name
+            )
+            if struct_mode:
+                occupancy = (
+                    struct_mode.structureMode
+                    == nest_occupancy_pb2.StructureModeTrait.StructureMode.STRUCTURE_MODE_HOME
+                )
+                break
+
         return NestThermostat(
             object_key=key,
             serial_number=serial_number,
             name=name,
             location=_get_protobuf_location(traits),
-            model="Thermostat",
+            model=model,
             software_version=software_version,
             online=online,
             current_temperature=current_temperature,
@@ -1159,6 +1214,8 @@ class NestParser:
             has_air_filter=has_air_filter,
             filter_replacement_needed=filter_replacement_needed,
             filter_runtime=filter_runtime,
+            battery_level=battery_level,
+            occupancy=occupancy,
         )
 
     def _get_protect_battery(self, traits: dict[str, Any]) -> tuple[float, int]:

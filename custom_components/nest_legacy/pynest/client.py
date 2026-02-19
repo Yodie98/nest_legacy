@@ -114,6 +114,7 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     # Sensors (Thermostat)
     nest_sensor_pb2.TemperatureTrait,
     nest_sensor_pb2.HumidityTrait,
+    nest_sensor_pb2.BatteryVoltageTrait,
     # Description / Identity (for Thermostat)
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,
@@ -1555,8 +1556,12 @@ class NestClient:
             )
 
         # Handle Eco Mode (Preset)
-        if "preset_mode" in data:
-            is_eco = data["preset_mode"] == "eco"
+        # Check for nested "eco" dict from climate.py or direct preset_mode key
+        eco_data = data.get("eco", {})
+        preset_val = data.get("preset_mode") or eco_data.get("mode")
+
+        if preset_val:
+            is_eco = preset_val in ("manual-eco", "eco")
             # We map 'schedule' back to non-eco in HA logic
             mode_enum = (
                 nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_MANUAL_ECO
@@ -2052,6 +2057,8 @@ class NestClient:
 
                         # Iterate through the list of actual response messages within the frame.
                         for inner_response in outer_response.observeResponse:
+                            updates: dict[str, dict[str, Any]] = {}
+
                             # Pass 1: Check for label collisions and log warnings
                             # with full details.
                             seen_labels: dict[str, dict[str, tuple[str, Any]]] = {}
@@ -2111,7 +2118,13 @@ class NestClient:
                                     state,
                                 )
 
-                            updates: dict[str, dict[str, Any]] = {}
+                            # Capture resource metadata (type) for device model identification
+                            for meta in inner_response.resourceMetas:
+                                r_id = meta.resourceId
+                                if r_id not in updates:
+                                    updates[r_id] = {}
+                                updates[r_id]["_resource_type"] = meta.type
+
                             for state in inner_response.traitStates:
                                 type_url = state.patch.values.type_url
                                 descriptor_full_name = type_url.removeprefix(
