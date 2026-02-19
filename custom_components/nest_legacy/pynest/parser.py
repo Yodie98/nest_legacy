@@ -524,6 +524,15 @@ class NestParser:
         streaming_state = value.get("streaming_state", "")
         model = value.get("model", "")
         props = value.get("properties", {})
+
+        battery_level = None
+        if "rq_battery_battery_volt" in props:
+            try:
+                volts = float(props["rq_battery_battery_volt"])
+                battery_level = _scale_value(volts, 0.0, 5.4, 0.0, 100.0)
+            except (ValueError, TypeError):
+                pass
+
         if "doorbell" in model.lower():
             return NestDoorbell(
                 object_key=key,
@@ -548,6 +557,7 @@ class NestParser:
                 web_url=value.get("web_url"),
                 nexus_api_http_server_url=value.get("nexus_api_http_server_url"),
                 structure_id=value.get("structure_id"),
+                battery_level=battery_level,
             )
         return NestCamera(
             object_key=key,
@@ -567,6 +577,7 @@ class NestParser:
             web_url=value.get("web_url"),
             nexus_api_http_server_url=value.get("nexus_api_http_server_url"),
             structure_id=value.get("structure_id"),
+            battery_level=battery_level,
         )
 
     def _parse_structure(
@@ -908,6 +919,39 @@ class NestParser:
             if resource_type == "nest.resource.NestLearningThermostat1Resource":
                 return "Learning Thermostat (1st gen)"
         return "Thermostat"
+
+    def _parse_protobuf_camera_model(
+        self, traits: dict[str, Any], is_doorbell: bool = False
+    ) -> str:
+        """Determine camera/doorbell model from resource type."""
+        resource_type = traits.get("_resource_type")
+        if resource_type:
+            if resource_type == "google.resource.GreenQuartzResource":
+                return "Doorbell (2nd gen, battery)"
+            if resource_type == "google.resource.UsticaResource":
+                return "Cam Indoor (3rd gen, wired)"
+            if resource_type == "google.resource.SpencerResource":
+                return "Cam (2nd gen, wired)"
+            if resource_type == "google.resource.VenusResource":
+                return "Doorbell (2nd gen, wired)"
+            if resource_type == "google.resource.RhodesResource":
+                return "Doorbell (3rd gen, wired)"
+            if resource_type == "nest.resource.NestCamOutdoorResource":
+                return "Cam Outdoor (1st gen, wired)"
+            if resource_type == "google.resource.LinosaResource":
+                return "Cam Outdoor (2nd gen, wired)"
+            if resource_type == "nest.resource.NestCamIndoorResource":
+                return "Cam Indoor (1st gen)"
+            if resource_type == "nest.resource.NestCamIQResource":
+                return "Cam IQ Indoor (1st gen)"
+            if resource_type == "nest.resource.NestCamIQOutdoorResource":
+                return "Cam IQ Outdoor (1st gen, wired)"
+            if resource_type == "nest.resource.NestHelloResource":
+                return "Doorbell (1st gen, wired)"
+            if resource_type in ("google.resource.NeonQuartzResource", "google.resource.AzizResource"):
+                return "Cam with Floodlight (1st gen, wired)"
+
+        return "Doorbell (unknown)" if is_doorbell else "Camera (unknown)"
 
     def _parse_protobuf_thermostat(
         self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
@@ -1659,16 +1703,34 @@ class NestParser:
             upload_live_image_trait.liveImageUrl if upload_live_image_trait else None
         )
 
+        # Battery Level
+        battery_trait: weave_power_pb2.BatteryPowerSourceTrait | None = traits.get(
+            weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
+        )
+        battery_level = None
+        if battery_trait:
+            if battery_trait.HasField("remaining") and battery_trait.remaining.HasField("remainingPercent"):
+                battery_level = _scale_value(
+                    battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
+                )
+            elif battery_trait.HasField("assessedVoltage"):
+                voltage_mv = int(battery_trait.assessedVoltage.value * 1000)
+                battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
+
         # Check if it's a doorbell (has doorbell traits)
-        if traits.get(
+        is_doorbell = traits.get(
             nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.DESCRIPTOR.full_name
-        ):
+        ) is not None
+
+        model = self._parse_protobuf_camera_model(traits, is_doorbell)
+
+        if is_doorbell:
             return NestDoorbell(
                 object_key=key,
                 serial_number=serial_number,
                 name=name,
                 location=_get_protobuf_location(traits),
-                model="Nest Doorbell",
+                model=model,
                 software_version=software_version,
                 online=online,
                 is_streaming=is_streaming,
@@ -1679,6 +1741,7 @@ class NestParser:
                 web_url=f"https://home.nest.com/camera/{key}",
                 indoor_chime_enabled=indoor_chime_enabled,
                 has_indoor_chime=has_indoor_chime,
+                battery_level=battery_level,
                 is_protobuf=True,
             )
 
@@ -1687,7 +1750,7 @@ class NestParser:
             serial_number=serial_number,
             name=name,
             location=_get_protobuf_location(traits),
-            model="Nest Camera",
+            model=model,
             software_version=software_version,
             online=online,
             is_streaming=is_streaming,
@@ -1696,6 +1759,7 @@ class NestParser:
             nexus_api_http_server_url=nexus_api_http_server_url
             or "https://nexusapi.dropcam.com",
             web_url=f"https://home.nest.com/camera/{key}",
+            battery_level=battery_level,
             is_protobuf=True,
         )
 

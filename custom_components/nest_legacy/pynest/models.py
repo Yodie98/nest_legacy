@@ -163,6 +163,7 @@ class NestCamera(NestDevice):
     web_url: str | None = None
     nexus_api_http_server_url: str | None = None
     structure_id: str | None = None
+    battery_level: float | None = None
 
 
 @dataclass(frozen=True)

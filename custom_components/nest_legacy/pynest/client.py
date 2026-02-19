@@ -169,6 +169,7 @@ _OBSERVE_CAMERA_TRAITS = (
     nest_camera_pb2.UploadLiveImageTrait,
     nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait,
     nest_audio_pb2.MicrophoneSettingsTrait,
+    weave_power_pb2.BatteryPowerSourceTrait,
     # Description / Identity (for Camera)
     weave_description_pb2.DeviceIdentityTrait,
     weave_description_pb2.LabelSettingsTrait,

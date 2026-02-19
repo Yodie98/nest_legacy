@@ -26,6 +26,7 @@ from homeassistant.helpers.typing import StateType
 from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
 from .pynest.models import (
+    NestCamera,
     NestDevice,
     NestHeatLink,
     NestLock,
@@ -44,16 +45,16 @@ class NestSensorEntityDescription(SensorEntityDescription):
 
 
 _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
-    # Protect, Temp Sensor & Lock
+    # Protect, Temp Sensor, Lock, Camera
     NestSensorEntityDescription(
         key="battery_level",
         translation_key="battery_level",
-        value_fn=lambda device: round(device.battery_level),
+        value_fn=lambda device: round(device.battery_level) if device.battery_level is not None else None,
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
-        device_types=(NestProtect, NestTempSensor, NestLock),
+        device_types=(NestProtect, NestTempSensor, NestLock, NestCamera),
     ),
     # Protect
     NestSensorEntityDescription(

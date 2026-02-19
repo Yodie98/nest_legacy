@@ -28,6 +28,7 @@ class NestSwitchEntityDescription(SwitchEntityDescription):
     """Class to describe a Nest switch."""
 
     device_types: tuple[type[NestDevice], ...]
+    unavailable_on_protobuf: bool = False
 
 
 _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
@@ -88,6 +89,7 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         icon="mdi:account-voice",
         device_types=(NestDoorbell,),
+        unavailable_on_protobuf=True,
     ),
     NestSwitchEntityDescription(
         key="irled_enabled",
@@ -96,6 +98,7 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:weather-night",
         device_types=(NestCamera,),
         entity_registry_enabled_default=False,
+        unavailable_on_protobuf=True,
     ),
     NestSwitchEntityDescription(
         key="status_led_enabled",
@@ -104,6 +107,7 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:led-on",
         device_types=(NestCamera,),
         entity_registry_enabled_default=False,
+        unavailable_on_protobuf=True,
     ),
     NestSwitchEntityDescription(
         key="video_flipped",
@@ -112,6 +116,7 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:rotate-180",
         device_types=(NestCamera,),
         entity_registry_enabled_default=False,
+        unavailable_on_protobuf=True,
     ),
     # Lock
     NestSwitchEntityDescription(
@@ -158,6 +163,9 @@ async def async_setup_entry(
     for device in coordinator.data.values():
         for description in _DESCRIPTIONS:
             if not isinstance(device, description.device_types):
+                continue
+
+            if description.unavailable_on_protobuf and device.is_protobuf:
                 continue
 
             if (
