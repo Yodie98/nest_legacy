@@ -32,6 +32,7 @@ class NestBinarySensorEntityDescription(BinarySensorEntityDescription):
 
     value_fn: Callable[[Any], bool]
     device_types: tuple[type[NestDevice], ...]
+    unavailable_on_protobuf: bool = False
 
 
 _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
@@ -57,6 +58,7 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.HEAT,
         value_fn=lambda device: device.heat_status,
         device_types=(NestProtect,),
+        unavailable_on_protobuf=True,  # No Protobuf trait available
     ),
     # Diagnostics
     NestBinarySensorEntityDescription(
@@ -158,6 +160,7 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.removed_from_base,
         device_types=(NestProtect,),
         entity_registry_enabled_default=False,
+        unavailable_on_protobuf=True,  # No Protobuf trait available
     ),
     # Wired specific
     NestBinarySensorEntityDescription(
@@ -223,6 +226,8 @@ async def async_setup_entry(
     for device in coordinator.data.values():
         for description in _DESCRIPTIONS:
             if not isinstance(device, description.device_types):
+                continue
+            if description.unavailable_on_protobuf and device.is_protobuf:
                 continue
             if hasattr(device, description.key):
                 entities.append(NestBinarySensor(coordinator, device, description))

@@ -175,7 +175,7 @@ class NestParser:
                         or nest_safety_pb2.SafetyAlarmSmokeTrait.DESCRIPTOR.full_name
                         in value
                     ):
-                        device = self._parse_protobuf_protect(key, value)
+                        device = self._parse_protobuf_protect(key, value, raw_data)
                     elif (
                         nest_camera_pb2.StreamingProtocolTrait.DESCRIPTOR.full_name
                         in value
@@ -1161,8 +1161,129 @@ class NestParser:
             filter_runtime=filter_runtime,
         )
 
+    def _get_protect_battery(self, traits: dict[str, Any]) -> tuple[float, int]:
+        """Calculate battery level and health state."""
+        batt_0: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            "battery_voltage_bank0"
+        )
+        batt_1: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
+            "battery_voltage_bank1"
+        )
+        # Fallback to generic descriptor if specific banks not found
+        if not batt_0 and not batt_1:
+            batt_generic = traits.get(
+                nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
+            )
+            # Assign to batt_1 to use in level calculation logic below
+            batt_1 = batt_generic
+
+        # Calculate battery level (prefer bank1)
+        target_batt = batt_1 or batt_0
+        battery_level = (
+            _milli_volt_to_percentage(
+                int(1000 * target_batt.batteryValue.batteryVoltage.value)
+            )
+            if target_batt
+            and target_batt.HasField("batteryValue")
+            and target_batt.batteryValue.HasField("batteryVoltage")
+            else 0.0
+        )
+
+        # Calculate health state: 1 if ANY bank has fault finding, else 0
+        battery_health_state = 0
+        if (batt_0 and batt_0.HasField("faultInformation")) or (
+            batt_1 and batt_1.HasField("faultInformation")
+        ):
+            battery_health_state = 1
+
+        return battery_level, battery_health_state
+
+    def _get_protect_failures(
+        self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
+    ) -> set[int]:
+        """Extract component failures from SafetySummaryTrait."""
+        # --- Parse Component Failures via SafetySummaryTrait ---
+        # SafetySummaryTrait is usually on the Structure, not the Device.
+        # We search raw_data for any resource that has this trait.
+        failures: set[int] = set()
+        safety_summary: nest_protect_pb2.SafetySummaryTrait | None = None
+
+        # 1. Check if it's on the device itself (unlikely but possible)
+        if nest_protect_pb2.SafetySummaryTrait.DESCRIPTOR.full_name in traits:
+            safety_summary = traits[
+                nest_protect_pb2.SafetySummaryTrait.DESCRIPTOR.full_name
+            ]
+        else:
+            # 2. Search all other resources (likely the Structure)
+            for other_traits in raw_data.values():
+                if (
+                    nest_protect_pb2.SafetySummaryTrait.DESCRIPTOR.full_name
+                    in other_traits
+                ):
+                    safety_summary = other_traits[
+                        nest_protect_pb2.SafetySummaryTrait.DESCRIPTOR.full_name
+                    ]
+                    # We assume there is only one SafetySummaryTrait (per structure)
+                    break
+
+        if safety_summary:
+            # Iterate through critical and warning devices to find THIS device (by ID)
+            all_statuses = list(safety_summary.criticalDevices) + list(
+                safety_summary.warningDevices
+            )
+            for dev_status in all_statuses:
+                # Compare the resourceId in the summary with the current device key
+                if dev_status.resourceId.resourceId == key:
+                    failures.update(dev_status.failures)
+
+        return failures
+
+    def _get_protect_timestamps(
+        self, traits: dict[str, Any], raw_data: dict[str, Any]
+    ) -> tuple[int, int]:
+        """Get manual and audio self-test timestamps."""
+        latest_manual_test_end_utc_secs = 0
+        last_audio_self_test_end_utc_secs = 0
+
+        self_test: nest_protect_pb2.SelfTestTrait | None = traits.get(
+            nest_protect_pb2.SelfTestTrait.DESCRIPTOR.full_name
+        )
+
+        # Check Legacy Structure Trait if device trait missing
+        struct_self_test: nest_protect_pb2.LegacyStructureSelfTestTrait | None = None
+        if not self_test:
+            for other_traits in raw_data.values():
+                if (
+                    nest_protect_pb2.LegacyStructureSelfTestTrait.DESCRIPTOR.full_name
+                    in other_traits
+                ):
+                    struct_self_test = other_traits[
+                        nest_protect_pb2.LegacyStructureSelfTestTrait.DESCRIPTOR.full_name
+                    ]
+                    break
+
+        if self_test:
+            if self_test.HasField("lastMstEnd"):
+                latest_manual_test_end_utc_secs = int(self_test.lastMstEnd.ToSeconds())
+            if self_test.HasField("lastAstEnd"):
+                last_audio_self_test_end_utc_secs = int(
+                    self_test.lastAstEnd.ToSeconds()
+                )
+        elif struct_self_test:
+            # Fallback to legacy structure trait
+            if struct_self_test.HasField("lastMstEndUtcSecs"):
+                latest_manual_test_end_utc_secs = int(
+                    struct_self_test.lastMstEndUtcSecs.ToSeconds()
+                )
+            if struct_self_test.HasField("lastAstEndUtcSecs"):
+                last_audio_self_test_end_utc_secs = int(
+                    struct_self_test.lastAstEndUtcSecs.ToSeconds()
+                )
+
+        return latest_manual_test_end_utc_secs, last_audio_self_test_end_utc_secs
+
     def _parse_protobuf_protect(
-        self, key: str, traits: dict[str, Any]
+        self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
     ) -> NestProtect | None:
         """Parse a Nest Protect from protobuf data."""
         smoke_trait: nest_sensor_pb2.SmokeTrait | None = traits.get(
@@ -1204,39 +1325,7 @@ class NestParser:
             else True
         )
 
-        # Check both battery banks if available
-        batt_0: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
-            "battery_voltage_bank0"
-        )
-        batt_1: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
-            "battery_voltage_bank1"
-        )
-        # Fallback to generic descriptor if specific banks not found
-        if not batt_0 and not batt_1:
-            batt_generic = traits.get(
-                nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
-            )
-            # Assign to batt_1 to use in level calculation logic below
-            batt_1 = batt_generic
-
-        # Calculate battery level (prefer bank1)
-        target_batt = batt_1 or batt_0
-        battery_level = (
-            _milli_volt_to_percentage(
-                int(1000 * target_batt.batteryValue.batteryVoltage.value)
-            )
-            if target_batt
-            and target_batt.HasField("batteryValue")
-            and target_batt.batteryValue.HasField("batteryVoltage")
-            else 0.0
-        )
-
-        # Calculate health state: 1 if ANY bank has fault finding, else 0
-        battery_health_state = 0
-        if (batt_0 and batt_0.HasField("faultInformation")) or (
-            batt_1 and batt_1.HasField("faultInformation")
-        ):
-            battery_health_state = 1
+        battery_level, battery_health_state = self._get_protect_battery(traits)
 
         smoke_status = (
             safety_smoke.alarmState
@@ -1251,11 +1340,53 @@ class NestParser:
             else False
         )
 
+        # Audio Test Results
         audio_test: nest_protect_pb2.AudioTestTrait | None = traits.get(
             nest_protect_pb2.AudioTestTrait.DESCRIPTOR.full_name
         )
-        spk_pass = audio_test.speakerResult.testPassed if audio_test else False
-        buz_pass = audio_test.buzzerResult.testPassed if audio_test else False
+        spk_pass = audio_test.speakerResult.testPassed if audio_test else True
+        buz_pass = audio_test.buzzerResult.testPassed if audio_test else True
+
+        failures = self._get_protect_failures(key, traits, raw_data)
+        component_smoke_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_SMOKE
+            not in failures
+        )
+        component_co_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_CO
+            not in failures
+        )
+        component_hum_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_HUM
+            not in failures
+        )
+        component_pir_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_PIR
+            not in failures
+        )
+        component_wifi_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_WIFI
+            not in failures
+        )
+        component_led_test_passed = (
+            nest_protect_pb2.SafetySummaryTrait.FailureType.FAILURE_TYPE_LED
+            not in failures
+        )
+
+        # Timestamps
+        latest_manual_test_end_utc_secs, last_audio_self_test_end_utc_secs = (
+            self._get_protect_timestamps(traits, raw_data)
+        )
+
+        # --- Replace By Date ---
+        replace_by_date = None
+        settings: nest_protect_pb2.LegacyProtectDeviceSettingsTrait | None = traits.get(
+            nest_protect_pb2.LegacyProtectDeviceSettingsTrait.DESCRIPTOR.full_name
+        )
+        if settings and settings.HasField("replaceByDate"):
+            replace_by_date = datetime.date.fromtimestamp(
+                settings.replaceByDate.ToSeconds()
+            )
 
         legacy_info = traits.get(
             nest_protect_pb2.LegacyProtectDeviceInfoTrait.DESCRIPTOR.full_name
@@ -1341,15 +1472,18 @@ class NestParser:
                 steam_detection_enable=steam_detection_enable,
                 night_light_brightness=night_light_brightness,
                 component_speaker_test_passed=spk_pass,
-                component_smoke_test_passed=True,
-                component_co_test_passed=True,
-                component_wifi_test_passed=True,
-                component_led_test_passed=True,
-                component_pir_test_passed=True,
+                component_smoke_test_passed=component_smoke_test_passed,
+                component_co_test_passed=component_co_test_passed,
+                component_wifi_test_passed=component_wifi_test_passed,
+                component_led_test_passed=component_led_test_passed,
+                component_pir_test_passed=component_pir_test_passed,
                 component_buzzer_test_passed=buz_pass,
-                component_hum_test_passed=True,
+                component_hum_test_passed=component_hum_test_passed,
                 ntp_green_led_enable=ntp_green_led_enable,
                 heads_up_enable=heads_up_enable,
+                replace_by_date=replace_by_date,
+                latest_manual_test_end_utc_secs=latest_manual_test_end_utc_secs,
+                last_audio_self_test_end_utc_secs=last_audio_self_test_end_utc_secs,
                 is_protobuf=True,
             )
 
@@ -1369,15 +1503,18 @@ class NestParser:
             steam_detection_enable=steam_detection_enable,
             night_light_brightness=night_light_brightness,
             component_speaker_test_passed=spk_pass,
-            component_smoke_test_passed=True,
-            component_co_test_passed=True,
-            component_wifi_test_passed=True,
-            component_led_test_passed=True,
-            component_pir_test_passed=True,
+            component_smoke_test_passed=component_smoke_test_passed,
+            component_co_test_passed=component_co_test_passed,
+            component_wifi_test_passed=component_wifi_test_passed,
+            component_led_test_passed=component_led_test_passed,
+            component_pir_test_passed=component_pir_test_passed,
             component_buzzer_test_passed=buz_pass,
-            component_hum_test_passed=True,
+            component_hum_test_passed=component_hum_test_passed,
             ntp_green_led_enable=ntp_green_led_enable,
             heads_up_enable=heads_up_enable,
+            replace_by_date=replace_by_date,
+            latest_manual_test_end_utc_secs=latest_manual_test_end_utc_secs,
+            last_audio_self_test_end_utc_secs=last_audio_self_test_end_utc_secs,
             is_protobuf=True,
         )
 
