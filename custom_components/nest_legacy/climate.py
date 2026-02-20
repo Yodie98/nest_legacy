@@ -187,7 +187,7 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
         """Set new target hvac mode."""
         nest_mode = _HVAC_MODE_BIDICT.inverse.get(hvac_mode)
         if nest_mode:
-            payload = {"target_temperature_type": nest_mode.value}
+            payload = {"hvac_mode": nest_mode.value}
             await self._set_device_data(payload)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:

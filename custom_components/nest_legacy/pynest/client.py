@@ -683,6 +683,11 @@ class NestClient:
     ) -> None:
         """Set properties for a thermostat."""
         device_id = object_key.split(".")[1]
+
+        # Translate generic 'hvac_mode' key to legacy API's 'target_temperature_type'
+        if "hvac_mode" in data:
+            data["target_temperature_type"] = data.pop("hvac_mode")
+
         shared_properties = {
             "target_temperature",
             "target_temperature_low",
