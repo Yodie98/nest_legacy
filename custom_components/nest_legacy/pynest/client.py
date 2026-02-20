@@ -1164,11 +1164,11 @@ class NestClient:
             response_bytes = await response.read()
             send_command_resp = v1_pb2.SendCommandResponse()
             send_command_resp.ParseFromString(response_bytes)
+            _LOGGER.debug("SendCommand response: %s", send_command_resp)
             if send_command_resp.status.code != 0:
                 raise PynestException(
                     f"Command failed with code {send_command_resp.status.code}: {send_command_resp.status.message}"
                 )
-            _LOGGER.debug("SendCommand response: %s", send_command_resp)
             return send_command_resp
 
     async def _async_update_trait_state(
@@ -1193,12 +1193,12 @@ class NestClient:
                 )
             response_bytes = await response.read()
             batch_update_resp = v1_pb2.BatchUpdateStateResponse()
+            batch_update_resp.ParseFromString(response_bytes)
+            _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
             if batch_update_resp.status.code != 0:
                 raise PynestException(
                     f"Command failed with code {batch_update_resp.status.code}: {batch_update_resp.status.message}"
                 )
-            batch_update_resp.ParseFromString(response_bytes)
-            _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
 
     async def _async_set_lock_property(
         self,
