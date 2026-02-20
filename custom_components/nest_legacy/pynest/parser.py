@@ -977,7 +977,10 @@ class NestParser:
                 return "Cam IQ Outdoor (1st gen, wired)"
             if resource_type == "nest.resource.NestHelloResource":
                 return "Doorbell (1st gen, wired)"
-            if resource_type in ("google.resource.NeonQuartzResource", "google.resource.AzizResource"):
+            if resource_type in (
+                "google.resource.NeonQuartzResource",
+                "google.resource.AzizResource",
+            ):
                 return "Cam with Floodlight (1st gen, wired)"
 
         return "Doorbell (unknown)" if is_doorbell else "Camera (unknown)"
@@ -1740,7 +1743,9 @@ class NestParser:
         )
         battery_level = None
         if battery_trait:
-            if battery_trait.HasField("remaining") and battery_trait.remaining.HasField("remainingPercent"):
+            if battery_trait.HasField("remaining") and battery_trait.remaining.HasField(
+                "remainingPercent"
+            ):
                 battery_level = _scale_value(
                     battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
                 )
@@ -1749,9 +1754,12 @@ class NestParser:
                 battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
 
         # Check if it's a doorbell (has doorbell traits)
-        is_doorbell = traits.get(
-            nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.DESCRIPTOR.full_name
-        ) is not None
+        is_doorbell = (
+            traits.get(
+                nest_doorbell_pb2.DoorbellIndoorChimeSettingsTrait.DESCRIPTOR.full_name
+            )
+            is not None
+        )
 
         model = self._parse_protobuf_camera_model(traits, is_doorbell)
 

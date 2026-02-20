@@ -49,7 +49,9 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="battery_level",
         translation_key="battery_level",
-        value_fn=lambda device: round(device.battery_level) if device.battery_level is not None else None,
+        value_fn=lambda device: round(device.battery_level)
+        if device.battery_level is not None
+        else None,
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
