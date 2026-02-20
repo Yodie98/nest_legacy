@@ -1133,9 +1133,11 @@ class NestParser:
         filter_trait: nest_hvac_pb2.FilterReminderTrait | None = traits.get(
             nest_hvac_pb2.FilterReminderTrait.DESCRIPTOR.full_name
         )
-        filter_replacement_needed = False
-        filter_runtime = 0
-        if filter_trait:
+        filter_replacement_needed = None
+        filter_runtime = None
+        if has_air_filter and filter_trait:
+            filter_replacement_needed = False
+            filter_runtime = 0
             if filter_trait.HasField("filterReplacementNeeded"):
                 filter_replacement_needed = filter_trait.filterReplacementNeeded.value
             if filter_trait.HasField("filterRuntime"):

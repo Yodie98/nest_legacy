@@ -136,8 +136,8 @@ class NestThermostat(NestDevice):
     has_humidifier: bool = False
     humidifier_state: bool = False
     has_air_filter: bool = False
-    filter_replacement_needed: bool = False
-    filter_runtime: int = 0
+    filter_replacement_needed: bool | None = None
+    filter_runtime: int | None = None
 
 
 @dataclass(frozen=True)

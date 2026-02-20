@@ -229,7 +229,7 @@ async def async_setup_entry(
                 continue
             if description.unavailable_on_protobuf and device.is_protobuf:
                 continue
-            if hasattr(device, description.key):
+            if getattr(device, description.key, None) is not None:
                 entities.append(NestBinarySensor(coordinator, device, description))
 
     async_add_entities(entities)
