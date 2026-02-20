@@ -362,9 +362,21 @@ class NestParser:
         )
 
         hvac_state = ThermostatHvacState.OFF
-        if data.get("hvac_heater_state") or data.get("hvac_aux_heater_state"):
+        if (
+            data.get("hvac_heater_state")
+            or data.get("hvac_heat_x2_state")
+            or data.get("hvac_heat_x3_state")
+            or data.get("hvac_aux_heater_state")
+            or data.get("hvac_alt_heat_state")
+            or data.get("hvac_alt_heat_x2_state")
+            or data.get("hvac_emer_heat_state")
+        ):
             hvac_state = ThermostatHvacState.HEATING
-        elif data.get("hvac_ac_state"):
+        elif (
+            data.get("hvac_ac_state")
+            or data.get("hvac_cool_x2_state")
+            or data.get("hvac_cool_x3_state")
+        ):
             hvac_state = ThermostatHvacState.COOLING
 
         target_temp_type = data.get("target_temperature_type", "off")
