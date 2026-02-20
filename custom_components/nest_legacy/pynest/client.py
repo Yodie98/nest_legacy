@@ -1263,14 +1263,22 @@ class NestClient:
             target_val = data.get("target_temperature")
 
             if target_val:
-                eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
-                eco_mode_settings_trait.ecoTemperatureCool.value.value = target_val
+                if eco_mode_settings_trait.ecoTemperatureHeat.enabled:
+                    eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
+                if eco_mode_settings_trait.ecoTemperatureCool.enabled:
+                    eco_mode_settings_trait.ecoTemperatureCool.value.value = target_val
 
-            if "target_temperature_low" in data:
+            if (
+                "target_temperature_low" in data
+                and eco_mode_settings_trait.ecoTemperatureHeat.enabled
+            ):
                 eco_mode_settings_trait.ecoTemperatureHeat.value.value = data[
                     "target_temperature_low"
                 ]
-            if "target_temperature_high" in data:
+            if (
+                "target_temperature_high" in data
+                and eco_mode_settings_trait.ecoTemperatureCool.enabled
+            ):
                 eco_mode_settings_trait.ecoTemperatureCool.value.value = data[
                     "target_temperature_high"
                 ]
