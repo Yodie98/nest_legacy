@@ -91,6 +91,7 @@ _OBSERVE_LOCK_TRAITS = (
 _OBSERVE_THERMOSTAT_TRAITS = (
     # Thermostat / HVAC
     nest_hvac_pb2.HvacControlTrait,
+    nest_hvac_pb2.KryptoniteObservedBeaconTrait,
     # nest_hvac_pb2.SetPointScheduleSettingsTrait,
     nest_hvac_pb2.RemoteComfortSensingSettingsTrait,
     # nest_hvac_pb2.EquipmentSettingsTrait,

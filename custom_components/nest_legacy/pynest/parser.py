@@ -509,8 +509,7 @@ class NestParser:
             name="Temperature Sensor",
             model=value.get("model"),
             software_version=value.get("software_version"),
-            online=(value.get("last_updated_at", 0) - value.get("creation_time", 0))
-            < 3600 * 4,
+            online=(time.time() - value.get("last_updated_at", 0)) < 3600 * 4,
             current_temperature=value.get("current_temperature"),
             battery_level=value.get("battery_level", 0.0),
             associated_thermostat_object_key=associated_thermostat,
@@ -1827,12 +1826,20 @@ class NestParser:
         liveness_trait: weave_heartbeat_pb2.LivenessTrait | None = traits.get(
             weave_heartbeat_pb2.LivenessTrait.DESCRIPTOR.full_name
         )
-        online = (
-            liveness_trait.status
-            == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
-            if liveness_trait
-            else True
+
+        beacon_trait: nest_hvac_pb2.KryptoniteObservedBeaconTrait | None = traits.get(
+            nest_hvac_pb2.KryptoniteObservedBeaconTrait.DESCRIPTOR.full_name
         )
+
+        if beacon_trait and beacon_trait.HasField("lastBeaconTime"):
+            online = (time.time() - beacon_trait.lastBeaconTime.ToSeconds()) < 3600 * 4
+        elif liveness_trait:
+            online = (
+                liveness_trait.status
+                == weave_heartbeat_pb2.LivenessTrait.LIVENESS_DEVICE_STATUS_ONLINE
+            )
+        else:
+            online = True
 
         # Scale battery voltage (2V-3V) to %
         batt_voltage_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
