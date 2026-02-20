@@ -370,8 +370,15 @@ class NestClient:
         try:
             auth = await self._async_get_access_token_from_cookies(issue_token, cookies)
             return await self._async_authenticate(auth.access_token)
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.debug(
+                "Expected error during Google credential authentication: %r", err
+            )
+            raise
         except Exception:
-            _LOGGER.exception("Error during Google credential authentication")
+            _LOGGER.exception(
+                "Unexpected error during Google credential authentication"
+            )
             raise
 
     async def async_authenticate_with_nest_token(
@@ -381,8 +388,15 @@ class NestClient:
         try:
             await self._async_get_camera_session_token(access_token)
             return await self._async_get_session(access_token)
+        except (ClientError, TimeoutError, PynestException) as err:
+            _LOGGER.debug(
+                "Expected error during legacy Nest token authentication: %r", err
+            )
+            raise
         except Exception:
-            _LOGGER.exception("Error during legacy Nest token authentication")
+            _LOGGER.exception(
+                "Unexpected error during legacy Nest token authentication"
+            )
             raise
 
     async def _async_get_access_token_from_cookies(
