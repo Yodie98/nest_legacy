@@ -2044,10 +2044,7 @@ class NestClient:
         headers = self._get_protobuf_headers()
 
         observe_req = v2_pb2.ObserveRequest(
-            stateTypes=[
-                v2_pb2.ACCEPTED,
-                v2_pb2.CONFIRMED,
-            ],
+            stateTypes=[v2_pb2.ACCEPTED, v2_pb2.CONFIRMED],
             traitTypeParams=[
                 v2_pb2.TraitTypeObserveParams(traitType=trait.DESCRIPTOR.full_name)
                 for trait in self._observe_traits
@@ -2083,148 +2080,136 @@ class NestClient:
                         if len(buffer) < frame_size:
                             break
 
-                        # Extract the entire frame and pass it to the parser.
                         full_frame_data = buffer[:frame_size]
-
-                        # Remove the frame from the buffer for the next iteration.
                         buffer = buffer[frame_size:]
 
                         outer_response = v2_pb2.ObserveResponse()
                         outer_response.ParseFromString(full_frame_data)
 
-                        # Iterate through the list of actual response messages within the frame.
                         for inner_response in outer_response.observeResponse:
-                            updates: dict[str, dict[str, Any]] = {}
-
-                            # Pass 1: Check for label collisions and log warnings
-                            # with full details.
-                            seen_labels: dict[str, dict[str, tuple[str, Any]]] = {}
-                            for state in inner_response.traitStates:
-                                type_url = state.patch.values.type_url
-                                descriptor_full_name = type_url.removeprefix(
-                                    _NESTLABS_TYPE_URL_PREFIX
-                                )
-                                resource_id = state.traitId.resourceId
-                                trait_label = state.traitId.traitLabel
-
-                                if trait_label.endswith("_bucketized"):
-                                    continue
-
-                                if resource_id not in seen_labels:
-                                    seen_labels[resource_id] = {}
-
-                                existing = seen_labels[resource_id].get(
-                                    descriptor_full_name
-                                )
-                                if existing:
-                                    prev_label, prev_state = existing
-                                    if (
-                                        prev_label != trait_label
-                                        and prev_label not in _LABEL_SPECIFIC_TRAITS
-                                        and trait_label not in _LABEL_SPECIFIC_TRAITS
-                                    ):
-                                        # Collision! Unpack both to log full details.
-                                        target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(
-                                            descriptor_full_name
-                                        )
-                                        if target_class:
-                                            msg1 = target_class()
-                                            prev_state.patch.values.Unpack(msg1)
-                                            msg2 = target_class()
-                                            state.patch.values.Unpack(msg2)
-                                            _LOGGER.warning(
-                                                "Multiple traits of type %s on %s "
-                                                "with different labels "
-                                                "('%s' and '%s'), only one will "
-                                                "be used. Consider adding labels "
-                                                "to _LABEL_SPECIFIC_TRAITS.\n"
-                                                "Value 1 (%s): %s\n"
-                                                "Value 2 (%s): %s",
-                                                descriptor_full_name,
-                                                resource_id,
-                                                prev_label,
-                                                trait_label,
-                                                prev_label,
-                                                msg1,
-                                                trait_label,
-                                                msg2,
-                                            )
-
-                                seen_labels[resource_id][descriptor_full_name] = (
-                                    trait_label,
-                                    state,
-                                )
-
-                            # Capture resource metadata (type) for device model identification
-                            for meta in inner_response.resourceMetas:
-                                r_id = meta.resourceId
-                                if r_id not in updates:
-                                    updates[r_id] = {}
-                                updates[r_id]["_resource_type"] = meta.type
-
-                            for state in inner_response.traitStates:
-                                type_url = state.patch.values.type_url
-                                descriptor_full_name = type_url.removeprefix(
-                                    _NESTLABS_TYPE_URL_PREFIX
-                                )
-                                target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(
-                                    descriptor_full_name
-                                )
-                                if not target_class:
-                                    _LOGGER.debug(
-                                        "Unknown type_url received, skipping: %s",
-                                        type_url,
-                                    )
-                                    continue
-
-                                unpacked_message = target_class()
-                                state.patch.values.Unpack(unpacked_message)
-
-                                resource_id = state.traitId.resourceId
-                                trait_label = state.traitId.traitLabel
-
-                                if trait_label.endswith("_bucketized"):
-                                    continue
-
-                                if resource_id not in updates:
-                                    updates[resource_id] = {}
-
-                                # Store by traitLabel for labels that need
-                                # label-specific access.
-                                # Prioritize ACCEPTED over CONFIRMED.
-                                if (
-                                    trait_label
-                                    and trait_label in _LABEL_SPECIFIC_TRAITS
-                                    and not (
-                                        trait_label in updates[resource_id]
-                                        and state.stateTypes != v2_pb2.ACCEPTED
-                                    )
-                                ):
-                                    updates[resource_id][trait_label] = unpacked_message
-
-                                # Prioritize ACCEPTED over CONFIRMED.
-                                # If we already have data for this trait in this batch,
-                                # and the current update is NOT ACCEPTED, ignore it.
-                                if (
-                                    descriptor_full_name in updates[resource_id]
-                                    and state.stateTypes != v2_pb2.ACCEPTED
-                                ):
-                                    continue
-
-                                updates[resource_id][descriptor_full_name] = (
-                                    unpacked_message
-                                )
-
+                            updates = self._parse_observe_response(inner_response)
                             if updates:
                                 yield updates
 
         except TimeoutError:
-            _LOGGER.debug(
-                "Stream connection timed out due to inactivity. The stream will need to be restarted"
-            )
+            _LOGGER.debug("Stream connection timed out due to inactivity.")
         except (ClientError, OSError) as err:
             _LOGGER.debug("Observe stream connection error: %s", err)
             raise PynestException(f"Observe stream failed: {err}") from err
         except Exception as err:
             _LOGGER.exception("Observe stream failed")
             raise PynestException(f"Observe stream failed: {err}") from err
+
+    def _parse_observe_response(
+        self, inner_response: v2_pb2.ObserveResponse.ObserveResponse
+    ) -> dict[str, dict[str, Any]]:
+        """Parse a single observe response message."""
+        updates: dict[str, dict[str, Any]] = {}
+
+        # Pass 1: Check for label collisions
+        self._check_trait_label_collisions(inner_response)
+
+        # Capture resource metadata (type) for device model identification
+        for meta in inner_response.resourceMetas:
+            r_id = meta.resourceId
+            if r_id not in updates:
+                updates[r_id] = {}
+            updates[r_id]["_resource_type"] = meta.type
+
+        # Pass 2: Parse individual trait states
+        for state in inner_response.traitStates:
+            type_url = state.patch.values.type_url
+            descriptor_full_name = type_url.removeprefix(_NESTLABS_TYPE_URL_PREFIX)
+            target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(descriptor_full_name)
+            if not target_class:
+                _LOGGER.debug("Unknown type_url received, skipping: %s", type_url)
+                continue
+
+            unpacked_message = target_class()
+            state.patch.values.Unpack(unpacked_message)
+
+            resource_id = state.traitId.resourceId
+            trait_label = state.traitId.traitLabel
+
+            if trait_label.endswith("_bucketized"):
+                continue
+
+            if resource_id not in updates:
+                updates[resource_id] = {}
+
+            # Store by traitLabel for labels that need
+            # label-specific access.
+            # Prioritize ACCEPTED over CONFIRMED.
+            if (
+                trait_label
+                and trait_label in _LABEL_SPECIFIC_TRAITS
+                and not (
+                    trait_label in updates[resource_id]
+                    and state.stateTypes != v2_pb2.ACCEPTED
+                )
+            ):
+                updates[resource_id][trait_label] = unpacked_message
+
+            # Prioritize ACCEPTED over CONFIRMED.
+            # If we already have data for this trait in this batch,
+            # and the current update is NOT ACCEPTED, ignore it.
+            if (
+                descriptor_full_name in updates[resource_id]
+                and state.stateTypes != v2_pb2.ACCEPTED
+            ):
+                continue
+
+            updates[resource_id][descriptor_full_name] = unpacked_message
+
+        return updates
+
+    def _check_trait_label_collisions(
+        self, inner_response: v2_pb2.ObserveResponse.ObserveResponse
+    ) -> None:
+        """Log warnings when multiple different labels are used for the same trait type."""
+        seen_labels: dict[str, dict[str, tuple[str, Any]]] = {}
+        for state in inner_response.traitStates:
+            type_url = state.patch.values.type_url
+            descriptor_full_name = type_url.removeprefix(_NESTLABS_TYPE_URL_PREFIX)
+            resource_id = state.traitId.resourceId
+            trait_label = state.traitId.traitLabel
+
+            if trait_label.endswith("_bucketized"):
+                continue
+
+            if resource_id not in seen_labels:
+                seen_labels[resource_id] = {}
+
+            existing = seen_labels[resource_id].get(descriptor_full_name)
+            if existing:
+                prev_label, prev_state = existing
+                if (
+                    prev_label != trait_label
+                    and prev_label not in _LABEL_SPECIFIC_TRAITS
+                    and trait_label not in _LABEL_SPECIFIC_TRAITS
+                ):
+                    # Collision! Unpack both to log full details.
+                    target_class = _TRAIT_TYPE_TO_CLASS_MAP.get(descriptor_full_name)
+                    if target_class:
+                        msg1, msg2 = target_class(), target_class()
+                        prev_state.patch.values.Unpack(msg1)
+                        state.patch.values.Unpack(msg2)
+                        _LOGGER.warning(
+                            "Multiple traits of type %s on %s "
+                            "with different labels "
+                            "('%s' and '%s'), only one will "
+                            "be used. Consider adding labels "
+                            "to _LABEL_SPECIFIC_TRAITS.\n"
+                            "Value 1 (%s): %s\n"
+                            "Value 2 (%s): %s",
+                            descriptor_full_name,
+                            resource_id,
+                            prev_label,
+                            trait_label,
+                            prev_label,
+                            msg1,
+                            trait_label,
+                            msg2,
+                        )
+
+            seen_labels[resource_id][descriptor_full_name] = (trait_label, state)
