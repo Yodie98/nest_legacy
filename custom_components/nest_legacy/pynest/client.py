@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import time
@@ -678,19 +679,35 @@ class NestClient:
 
         url = f"{self._nest_session.urls.transport_url}/v6/put"
         _LOGGER.debug("Updating objects via URL %s: %s", url, objects_to_update)
-        async with self._session.post(
-            url,
-            json={"objects": objects_to_update},
-            headers={
-                "Authorization": f"Basic {self._nest_session.access_token}",
-                "X-nl-user-id": self._nest_session.userid,
-                "X-nl-protocol-version": "1",
-            },
-        ) as response:
-            if not response.ok:
-                raise PynestException(
-                    f"Error updating objects: {await response.text()}"
-                )
+
+        async def _do_post():
+            async with self._session.post(
+                url,
+                json={"objects": objects_to_update},
+                headers={
+                    "Authorization": f"Basic {self._nest_session.access_token}",
+                    "X-nl-user-id": self._nest_session.userid,
+                    "X-nl-protocol-version": "1",
+                },
+            ) as response:
+                if response.status in (401, 403):
+                    raise NotAuthenticatedException(
+                        f"Authentication failed: {response.status}"
+                    )
+                if not response.ok:
+                    raise PynestException(
+                        f"Error updating objects: {await response.text()}"
+                    )
+
+        for attempt in range(3):
+            try:
+                await _do_post()
+            except (ClientError, TimeoutError, PynestException) as err:
+                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                    raise
+                await asyncio.sleep(0.5 * (2**attempt))
+            else:
+                return
 
     async def _async_set_thermostat_property(
         self, object_key: str, data: dict[str, Any]
@@ -921,14 +938,34 @@ class NestClient:
 
         headers = self._get_camera_headers()
         headers["Content-Type"] = "application/x-www-form-urlencoded"
-        async with self._session.post(url, headers=headers, data=payload) as response:
-            if not response.ok:
-                raise PynestException(
-                    f"Error setting camera property: {await response.text()}"
-                )
-            result = await response.json()
-            if result.get("status") != 0:
-                raise PynestException(f"API error setting camera property: {result}")
+
+        async def _do_post():
+            async with self._session.post(
+                url, headers=headers, data=payload
+            ) as response:
+                if response.status in (401, 403):
+                    raise NotAuthenticatedException(
+                        f"Authentication failed: {response.status}"
+                    )
+                if not response.ok:
+                    raise PynestException(
+                        f"Error setting camera property: {await response.text()}"
+                    )
+                result = await response.json()
+                if result.get("status") != 0:
+                    raise PynestException(
+                        f"API error setting camera property: {result}"
+                    )
+
+        for attempt in range(3):
+            try:
+                await _do_post()
+            except (ClientError, TimeoutError, PynestException) as err:
+                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                    raise
+                await asyncio.sleep(0.5 * (2**attempt))
+            else:
+                return
 
     async def _async_set_protobuf_camera_property(
         self,
@@ -1166,24 +1203,42 @@ class NestClient:
 
         url = f"https://{self._environment.grpc_host}{_SEND_COMMAND_ENDPOINT}"
 
-        async with self._session.post(
-            url,
-            data=send_command_req.SerializeToString(),
-            headers=self._get_protobuf_headers(),
-            timeout=ClientTimeout(total=_PROTOBUF_COMMAND_TIMEOUT),
-        ) as response:
-            if not response.ok:
-                raise PynestException(f"Error sending command: {await response.text()}")
+        async def _do_send():
+            async with self._session.post(
+                url,
+                data=send_command_req.SerializeToString(),
+                headers=self._get_protobuf_headers(),
+                timeout=ClientTimeout(total=_PROTOBUF_COMMAND_TIMEOUT),
+            ) as response:
+                if response.status in (401, 403):
+                    raise NotAuthenticatedException(
+                        f"Authentication failed: {response.status}"
+                    )
+                if not response.ok:
+                    raise PynestException(
+                        f"Error sending command: {await response.text()}"
+                    )
 
-            response_bytes = await response.read()
-            send_command_resp = v1_pb2.SendCommandResponse()
-            send_command_resp.ParseFromString(response_bytes)
-            _LOGGER.debug("SendCommand response: %s", send_command_resp)
-            if send_command_resp.status.code != 0:
-                raise PynestException(
-                    f"Command failed with code {send_command_resp.status.code}: {send_command_resp.status.message}"
-                )
-            return send_command_resp
+                response_bytes = await response.read()
+                send_command_resp = v1_pb2.SendCommandResponse()
+                send_command_resp.ParseFromString(response_bytes)
+                _LOGGER.debug("SendCommand response: %s", send_command_resp)
+                if send_command_resp.status.code != 0:
+                    raise PynestException(
+                        f"Command failed with code {send_command_resp.status.code}: {send_command_resp.status.message}"
+                    )
+                return send_command_resp
+
+        for attempt in range(3):
+            try:
+                return await _do_send()
+            except (ClientError, TimeoutError, PynestException) as err:
+                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                    raise
+                await asyncio.sleep(0.5 * (2**attempt))
+
+        # This should be unreachable due to the raise in the last retry attempt.
+        raise PynestException("Command failed after all retry attempts")
 
     async def _async_update_trait_state(
         self, trait_update_request: v1_pb2.TraitUpdateStateRequest
@@ -1195,24 +1250,39 @@ class NestClient:
         _LOGGER.debug("BatchUpdate request: %s", batch_update_req)
         url = f"https://{self._environment.grpc_host}{_BATCH_UPDATE_ENDPOINT}"
 
-        async with self._session.post(
-            url,
-            data=batch_update_req.SerializeToString(),
-            headers=self._get_protobuf_headers(),
-            timeout=ClientTimeout(total=_PROTOBUF_COMMAND_TIMEOUT),
-        ) as response:
-            if not response.ok:
-                raise PynestException(
-                    f"Error updating trait state: {await response.text()}"
-                )
-            response_bytes = await response.read()
-            batch_update_resp = v1_pb2.BatchUpdateStateResponse()
-            batch_update_resp.ParseFromString(response_bytes)
-            _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
-            if batch_update_resp.status.code != 0:
-                raise PynestException(
-                    f"Command failed with code {batch_update_resp.status.code}: {batch_update_resp.status.message}"
-                )
+        async def _do_update():
+            async with self._session.post(
+                url,
+                data=batch_update_req.SerializeToString(),
+                headers=self._get_protobuf_headers(),
+                timeout=ClientTimeout(total=_PROTOBUF_COMMAND_TIMEOUT),
+            ) as response:
+                if response.status in (401, 403):
+                    raise NotAuthenticatedException(
+                        f"Authentication failed: {response.status}"
+                    )
+                if not response.ok:
+                    raise PynestException(
+                        f"Error updating trait state: {await response.text()}"
+                    )
+                response_bytes = await response.read()
+                batch_update_resp = v1_pb2.BatchUpdateStateResponse()
+                batch_update_resp.ParseFromString(response_bytes)
+                _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
+                if batch_update_resp.status.code != 0:
+                    raise PynestException(
+                        f"Command failed with code {batch_update_resp.status.code}: {batch_update_resp.status.message}"
+                    )
+
+        for attempt in range(3):
+            try:
+                await _do_update()
+            except (ClientError, TimeoutError, PynestException) as err:
+                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                    raise
+                await asyncio.sleep(0.5 * (2**attempt))
+            else:
+                return
 
     async def _async_set_lock_property(
         self,
