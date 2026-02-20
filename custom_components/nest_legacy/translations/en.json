@@ -220,6 +220,9 @@
             "heads_up": {
                 "name": "Heads-Up"
             },
+            "humidifier": {
+                "name": "Humidifier"
+            },
             "image_rotation": {
                 "name": "Image Rotation"
             },

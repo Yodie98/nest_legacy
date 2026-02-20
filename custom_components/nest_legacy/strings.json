@@ -39,24 +39,60 @@
   },
   "entity": {
     "binary_sensor": {
-      "battery_health": { "name": "Battery Health" },
-      "buzzer_test": { "name": "Buzzer Test" },
-      "co_status": { "name": "Carbon Monoxide" },
-      "co_test": { "name": "CO Test" },
-      "eco_mode": { "name": "Eco Mode" },
-      "filter_replacement_needed": { "name": "Filter Replacement Needed" },
-      "heat_status": { "name": "Heat" },
-      "humidity_test": { "name": "Humidity Test" },
-      "led_test": { "name": "LED Test" },
-      "line_power": { "name": "Line Power" },
-      "occupancy": { "name": "Occupancy" },
-      "pir_test": { "name": "PIR Test" },
-      "removed_from_base": { "name": "Removed from Base" },
-      "smoke_status": { "name": "Smoke" },
-      "smoke_test": { "name": "Smoke Test" },
-      "speaker_test": { "name": "Speaker Test" },
-      "tamper": { "name": "Tamper" },
-      "wifi_test": { "name": "WiFi Test" }
+      "battery_health": {
+        "name": "Battery Health"
+      },
+      "buzzer_test": {
+        "name": "Buzzer Test"
+      },
+      "co_status": {
+        "name": "Carbon Monoxide"
+      },
+      "co_test": {
+        "name": "CO Test"
+      },
+      "eco_mode": {
+        "name": "Eco Mode"
+      },
+      "filter_replacement_needed": {
+        "name": "Filter Replacement Needed"
+      },
+      "heat_status": {
+        "name": "Heat"
+      },
+      "humidity_test": {
+        "name": "Humidity Test"
+      },
+      "led_test": {
+        "name": "LED Test"
+      },
+      "line_power": {
+        "name": "Line Power"
+      },
+      "occupancy": {
+        "name": "Occupancy"
+      },
+      "pir_test": {
+        "name": "PIR Test"
+      },
+      "removed_from_base": {
+        "name": "Removed from Base"
+      },
+      "smoke_status": {
+        "name": "Smoke"
+      },
+      "smoke_test": {
+        "name": "Smoke Test"
+      },
+      "speaker_test": {
+        "name": "Speaker Test"
+      },
+      "tamper": {
+        "name": "Tamper"
+      },
+      "wifi_test": {
+        "name": "WiFi Test"
+      }
     },
     "event": {
       "chime": {
@@ -86,13 +122,19 @@
       }
     },
     "fan": {
-      "fan": { "name": "Fan" }
+      "fan": {
+        "name": "Fan"
+      }
     },
     "lock": {
-      "lock": { "name": "Lock" }
+      "lock": {
+        "name": "Lock"
+      }
     },
     "number": {
-      "auto_relock_duration": { "name": "Auto-Relock Duration" }
+      "auto_relock_duration": {
+        "name": "Auto-Relock Duration"
+      }
     },
     "select": {
       "home_away_mode": {
@@ -114,12 +156,24 @@
       }
     },
     "sensor": {
-      "backplate_temperature": { "name": "Backplate Temperature" },
-      "battery_level": { "name": "Battery Level" },
-      "fan_duration_config": { "name": "Fan Duration Configuration" },
-      "fan_timer_timeout": { "name": "Fan Timer Timeout" },
-      "filter_runtime": { "name": "Filter Runtime" },
-      "humidity": { "name": "Humidity" },
+      "backplate_temperature": {
+        "name": "Backplate Temperature"
+      },
+      "battery_level": {
+        "name": "Battery Level"
+      },
+      "fan_duration_config": {
+        "name": "Fan Duration Configuration"
+      },
+      "fan_timer_timeout": {
+        "name": "Fan Timer Timeout"
+      },
+      "filter_runtime": {
+        "name": "Filter Runtime"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
       "last_action": {
         "name": "Last Action",
         "state": {
@@ -131,28 +185,71 @@
           "voice": "Voice Assistant"
         }
       },
-      "last_audio_self_test": { "name": "Last Audio Self Test" },
-      "last_manual_test": { "name": "Last Manual Test" },
-      "replace_by": { "name": "Replace By" },
-      "target_humidity": { "name": "Target Humidity" },
-      "temperature": { "name": "Temperature" }
+      "last_audio_self_test": {
+        "name": "Last Audio Self Test"
+      },
+      "last_manual_test": {
+        "name": "Last Manual Test"
+      },
+      "replace_by": {
+        "name": "Replace By"
+      },
+      "target_humidity": {
+        "name": "Target Humidity"
+      },
+      "temperature": {
+        "name": "Temperature"
+      }
     },
     "switch": {
-      "active_sensor": { "name": "Control Thermostat" },
-      "audio": { "name": "Audio" },
-      "auto_relock": { "name": "Auto-Relock" },
-      "camera_streaming": { "name": "Streaming" },
-      "dehumidifier": { "name": "Dehumidifier" },
-      "heads_up": { "name": "Heads-Up" },
-      "image_rotation": { "name": "Image Rotation" },
-      "indoor_chime": { "name": "Indoor Chime" },
-      "night_vision": { "name": "Night Vision" },
-      "nightly_promise": { "name": "Nightly Promise" },
-      "pathlight": { "name": "Pathlight" },
-      "status_led": { "name": "Status LED" },
-      "steam_check": { "name": "Steam Check" },
-      "temperature_lock": { "name": "Temperature Lock" },
-      "visitor_announcements": { "name": "Visitor Announcements" }
+      "active_sensor": {
+        "name": "Control Thermostat"
+      },
+      "audio": {
+        "name": "Audio"
+      },
+      "auto_relock": {
+        "name": "Auto-Relock"
+      },
+      "camera_streaming": {
+        "name": "Streaming"
+      },
+      "dehumidifier": {
+        "name": "Dehumidifier"
+      },
+      "heads_up": {
+        "name": "Heads-Up"
+      },
+      "humidifier": {
+        "name": "Humidifier"
+      },
+      "image_rotation": {
+        "name": "Image Rotation"
+      },
+      "indoor_chime": {
+        "name": "Indoor Chime"
+      },
+      "night_vision": {
+        "name": "Night Vision"
+      },
+      "nightly_promise": {
+        "name": "Nightly Promise"
+      },
+      "pathlight": {
+        "name": "Pathlight"
+      },
+      "status_led": {
+        "name": "Status LED"
+      },
+      "steam_check": {
+        "name": "Steam Check"
+      },
+      "temperature_lock": {
+        "name": "Temperature Lock"
+      },
+      "visitor_announcements": {
+        "name": "Visitor Announcements"
+      }
     },
     "water_heater": {
       "heat_link": {

@@ -141,6 +141,13 @@ _DESCRIPTIONS: tuple[NestSwitchEntityDescription, ...] = (
         icon="mdi:water-off",
         device_types=(NestThermostat,),
     ),
+    NestSwitchEntityDescription(
+        key="humidifier_state",
+        translation_key="humidifier",
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:water-plus",
+        device_types=(NestThermostat,),
+    ),
     # Temp Sensor
     NestSwitchEntityDescription(
         key="is_active_sensor",
@@ -187,9 +194,14 @@ async def async_setup_entry(
                 hasattr(device, description.key)
                 and getattr(device, description.key) is not None
             ):
-                # Handle optional capabilities (like dehumidifier)
+                # Handle optional capabilities (like dehumidifier/humidifier)
                 if description.key == "dehumidifier_state" and not getattr(
-                    device, "has_dehumidifier", True
+                    device, "has_dehumidifier", False
+                ):
+                    continue
+
+                if description.key == "humidifier_state" and not getattr(
+                    device, "has_humidifier", False
                 ):
                     continue
 

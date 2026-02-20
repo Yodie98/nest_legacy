@@ -1529,8 +1529,12 @@ class NestClient:
                 device, data, now, current_traits
             )
 
-        # Handle Dehumidifier and Target Humidity
-        if "dehumidifier_state" in data or "target_humidity" in data:
+        # Handle Humidifier, Dehumidifier and Target Humidity
+        if (
+            "dehumidifier_state" in data
+            or "humidifier_state" in data
+            or "target_humidity" in data
+        ):
             humidity_control_settings_trait = _get_trait_copy(
                 current_traits, nest_hvac_pb2.HumidityControlSettingsTrait
             )
@@ -1538,6 +1542,10 @@ class NestClient:
                 humidity_control_settings_trait.dehumidifierTargetHumidity.enabled = (
                     data["dehumidifier_state"]
                 )
+            if "humidifier_state" in data:
+                humidity_control_settings_trait.humidifierTargetHumidity.enabled = data[
+                    "humidifier_state"
+                ]
             if "target_humidity" in data:
                 humidity_level = float(data["target_humidity"])
                 humidity_control_settings_trait.targetHumidity.value = humidity_level
