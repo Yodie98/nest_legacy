@@ -379,16 +379,6 @@ class NestParser:
         ):
             hvac_state = ThermostatHvacState.COOLING
 
-        target_temp_type = data.get("target_temperature_type", "off")
-        try:
-            hvac_mode = ThermostatHvacMode(target_temp_type)
-        except ValueError:
-            _LOGGER.warning(
-                "Unsupported value for ThermostatHvacMode: '%s'. Defaulting to OFF",
-                target_temp_type,
-            )
-            hvac_mode = ThermostatHvacMode.OFF
-
         temp_scale_value = data.get("temperature_scale")
         try:
             temp_scale = (
@@ -405,9 +395,34 @@ class NestParser:
         if is_eco:
             target_low = data.get("away_temperature_low")
             target_high = data.get("away_temperature_high")
+
+            heat_enabled = data.get("away_temperature_low_enabled", False)
+            cool_enabled = data.get("away_temperature_high_enabled", False)
+
+            if heat_enabled and not cool_enabled:
+                hvac_mode = ThermostatHvacMode.HEAT
+            elif not heat_enabled and cool_enabled:
+                hvac_mode = ThermostatHvacMode.COOL
+            elif heat_enabled and cool_enabled:
+                hvac_mode = ThermostatHvacMode.RANGE
+            else:
+                hvac_mode = ThermostatHvacMode.OFF
         else:
             target_low = data.get("target_temperature_low")
             target_high = data.get("target_temperature_high")
+
+            target_temp_type = data.get("target_temperature_type", "off")
+            if target_temp_type == "eco":
+                hvac_mode = ThermostatHvacMode.RANGE
+            else:
+                try:
+                    hvac_mode = ThermostatHvacMode(target_temp_type)
+                except ValueError:
+                    _LOGGER.warning(
+                        "Unsupported value for ThermostatHvacMode: '%s'. Defaulting to OFF",
+                        target_temp_type,
+                    )
+                    hvac_mode = ThermostatHvacMode.OFF
 
         current_temperature = data.get("current_temperature")
 
@@ -756,13 +771,16 @@ class NestParser:
                     and not eco_settings.ecoTemperatureCool.enabled
                 ):
                     target_temp = target_low
+                    hvac_mode = ThermostatHvacMode.HEAT
                 elif (
                     not eco_settings.ecoTemperatureHeat.enabled
                     and eco_settings.ecoTemperatureCool.enabled
                 ):
                     target_temp = target_high
+                    hvac_mode = ThermostatHvacMode.COOL
                 else:
                     target_temp = (target_low + target_high) / 2
+                    hvac_mode = ThermostatHvacMode.RANGE
             return target_temp, target_low, target_high, hvac_mode
 
         # Standard Target Temperature
