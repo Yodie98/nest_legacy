@@ -1526,9 +1526,6 @@ class NestParser:
         legacy_info = traits.get(
             nest_protect_pb2.LegacyProtectDeviceInfoTrait.DESCRIPTOR.full_name
         )
-        struct_mode = traits.get(
-            nest_occupancy_pb2.StructureModeTrait.DESCRIPTOR.full_name
-        )
 
         is_wired = (
             legacy_info.linePowerCapable
@@ -1538,11 +1535,7 @@ class NestParser:
 
         occupancy = False
         if is_wired:
-            occupancy = (legacy_info is not None and not legacy_info.autoAway) or (
-                struct_mode is not None
-                and struct_mode.occupancy.activity
-                == nest_occupancy_pb2.StructureModeTrait.Activity.ACTIVITY_ACTIVE
-            )
+            occupancy = legacy_info is not None and not legacy_info.autoAway
 
         enhanced_pathlight: nest_ui_pb2.EnhancedPathlightSettingsTrait | None = (
             traits.get(nest_ui_pb2.EnhancedPathlightSettingsTrait.DESCRIPTOR.full_name)
