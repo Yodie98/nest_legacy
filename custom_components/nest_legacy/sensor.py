@@ -140,6 +140,7 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         value_fn=lambda device: device.filter_runtime,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_types=(NestThermostat,),
     ),
