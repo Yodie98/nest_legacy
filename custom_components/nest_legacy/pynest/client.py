@@ -344,6 +344,7 @@ class NestClient:
         self._camera_session_token: str | None = None
         self._raw_data: dict[str, Any] = {}
         self._buckets_for_subscription: list[Bucket] = []
+        self._resource_types: dict[str, str] = {}
 
         self._enable_protobuf_lock = enable_protobuf_lock
         self._enable_protobuf_thermostat = enable_protobuf_thermostat
@@ -2162,7 +2163,7 @@ class NestClient:
                                 yield updates
 
         except TimeoutError:
-            _LOGGER.debug("Stream connection timed out due to inactivity.")
+            _LOGGER.debug("Stream connection timed out due to inactivity")
         except (ClientError, OSError) as err:
             _LOGGER.debug("Observe stream connection error: %s", err)
             raise PynestException(f"Observe stream failed: {err}") from err
@@ -2181,10 +2182,7 @@ class NestClient:
 
         # Capture resource metadata (type) for device model identification
         for meta in inner_response.resourceMetas:
-            r_id = meta.resourceId
-            if r_id not in updates:
-                updates[r_id] = {}
-            updates[r_id]["_resource_type"] = meta.type
+            self._resource_types[meta.resourceId] = meta.type
 
         # Pass 2: Parse individual trait states
         for state in inner_response.traitStates:
@@ -2206,6 +2204,10 @@ class NestClient:
 
             if resource_id not in updates:
                 updates[resource_id] = {}
+                if resource_id in self._resource_types:
+                    updates[resource_id]["_resource_type"] = self._resource_types[
+                        resource_id
+                    ]
 
             # Store by traitLabel for labels that need
             # label-specific access.
