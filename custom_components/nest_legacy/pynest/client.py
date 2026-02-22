@@ -728,12 +728,24 @@ class NestClient:
         }
         shared_payload = {k: v for k, v in data.items() if k in shared_properties}
         device_payload = {k: v for k, v in data.items() if k not in shared_properties}
+
+        objects_to_update = []
         if shared_payload:
             shared_payload["target_change_pending"] = True
-            shared_key = f"shared.{device_id}"
-            await self._async_set_generic_property(shared_key, shared_payload)
+            objects_to_update.append(
+                {
+                    "object_key": f"shared.{device_id}",
+                    "op": "MERGE",
+                    "value": shared_payload,
+                }
+            )
         if device_payload:
-            await self._async_set_generic_property(object_key, device_payload)
+            objects_to_update.append(
+                {"object_key": object_key, "op": "MERGE", "value": device_payload}
+            )
+
+        if objects_to_update:
+            await self._async_update_objects(objects_to_update)
 
     async def _async_set_generic_property(
         self, object_key: str, data: dict[str, Any]
@@ -1338,13 +1350,23 @@ class NestClient:
         data: dict[str, Any],
         now: Timestamp,
         current_traits: dict[str, Any] | None = None,
+        is_eco: bool | None = None,
     ) -> None:
         """Handle temperature updates for protobuf thermostat."""
+        # is_eco is passed explicitly from the caller to avoid reading stale
+        # device.is_eco_mode from the coordinator snapshot. The coordinator
+        # won't reflect the new state until the next observe push, so if the
+        # same payload also clears eco mode, device.is_eco_mode is still True
+        # here and would incorrectly route the temperature write to
+        # EcoModeSettingsTrait instead of TargetTemperatureSettingsTrait.
+        if is_eco is None:
+            is_eco = device.is_eco_mode
+
         # Check if we are in Eco Mode. If so, we must update EcoModeSettingsTrait
         if (
             device.hvac_mode
             in (ThermostatHvacMode.OFF, "eco", "ecoheat", "ecocool", "ecorange")
-            or device.is_eco_mode
+            or is_eco
         ):
             # We are setting Eco temperatures
             eco_mode_settings_trait = _get_trait_copy(
@@ -1605,13 +1627,49 @@ class NestClient:
         now = Timestamp()
         now.GetCurrentTime()
 
+        # Compute the intended eco state from the payload upfront, before any
+        # API calls, so that later
+        # steps in this function use the correct intended state rather than the
+        # stale coordinator snapshot (which won't update until the next observe).
+        eco_data = data.get("eco", {})
+        preset_val = data.get("preset_mode") or eco_data.get("mode")
+        if preset_val:
+            intended_is_eco = preset_val in ("manual-eco", "eco")
+        else:
+            intended_is_eco = device.is_eco_mode
+
+        # Handle Eco Mode (Preset) FIRST
+        # sending eco-off before the temperature change, so the backend
+        # processes the mode transition before applying the new setpoint.
+        if preset_val:
+            mode_enum = (
+                nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_MANUAL_ECO
+                if intended_is_eco
+                else nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_INACTIVE
+            )
+
+            cmd = v1_pb2.ResourceCommand(traitLabel="eco_mode")
+            cmd.command.Pack(
+                nest_hvac_pb2.EcoModeStateTrait.EcoModeChangeRequest(
+                    ecoMode=mode_enum, setAll=False
+                ),
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+            await self._async_send_command(device, cmd)
+
+        # Handle HVAC Mode
+        if "hvac_mode" in data:
+            await self._set_proto_thermostat_hvac_mode(
+                device, data, now, current_traits
+            )
+
         if (
             "target_temperature" in data
             or "target_temperature_low" in data
             or "target_temperature_high" in data
         ):
             await self._set_proto_thermostat_temperature(
-                device, data, now, current_traits
+                device, data, now, current_traits, is_eco=intended_is_eco
             )
 
         # Handle Humidifier, Dehumidifier and Target Humidity
@@ -1656,35 +1714,6 @@ class NestClient:
                 state=any_proto,
             )
             await self._async_update_trait_state(req)
-
-        # Handle HVAC Mode
-        if "hvac_mode" in data:
-            await self._set_proto_thermostat_hvac_mode(
-                device, data, now, current_traits
-            )
-
-        # Handle Eco Mode (Preset)
-        # Check for nested "eco" dict from climate.py or direct preset_mode key
-        eco_data = data.get("eco", {})
-        preset_val = data.get("preset_mode") or eco_data.get("mode")
-
-        if preset_val:
-            is_eco = preset_val in ("manual-eco", "eco")
-            # We map 'schedule' back to non-eco in HA logic
-            mode_enum = (
-                nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_MANUAL_ECO
-                if is_eco
-                else nest_hvac_pb2.EcoModeStateTrait.EcoMode.ECO_MODE_INACTIVE
-            )
-
-            cmd = v1_pb2.ResourceCommand(traitLabel="eco_mode")
-            cmd.command.Pack(
-                nest_hvac_pb2.EcoModeStateTrait.EcoModeChangeRequest(
-                    ecoMode=mode_enum, setAll=False
-                ),
-                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
-            )
-            await self._async_send_command(device, cmd)
 
         # Handle Fan Control
         if "fan_timer_timeout" in data or "fan_timer_speed" in data:

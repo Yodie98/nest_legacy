@@ -170,10 +170,11 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
-        if self.device.is_eco_mode:
-            await self.async_set_preset_mode(PRESET_NONE)
-
         payload: dict[str, Any] = {}
+
+        if self.device.is_eco_mode:
+            payload["eco"] = {"mode": "schedule"}
+
         if ATTR_TEMPERATURE in kwargs:
             payload["target_temperature"] = kwargs[ATTR_TEMPERATURE]
         if "target_temp_low" in kwargs:
@@ -181,7 +182,8 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
         if "target_temp_high" in kwargs:
             payload["target_temperature_high"] = kwargs["target_temp_high"]
 
-        await self._set_device_data(payload)
+        if payload:
+            await self._set_device_data(payload)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
