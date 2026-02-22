@@ -61,7 +61,7 @@ async def async_setup_entry(
         for device in coordinator.data.values()
         if isinstance(device, NestProtect)
         for description in _PROTECT_DESCRIPTIONS
-        if hasattr(device, description.key)
+        if getattr(device, description.key, None) is not None
     ]
     entities.extend(
         NestStructureSelect(coordinator, device, description)
