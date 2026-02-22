@@ -2004,4 +2004,5 @@ class NestParser:
             current_temperature=thermostat.current_water_temperature,
             target_temperature=thermostat.hot_water_temperature,
             temperature_scale=thermostat.temperature_scale,
+            is_protobuf=thermostat.is_protobuf,
         )
