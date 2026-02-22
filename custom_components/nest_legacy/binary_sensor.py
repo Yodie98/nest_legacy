@@ -66,7 +66,7 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
         translation_key="battery_health",
         device_class=BinarySensorDeviceClass.BATTERY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda device: device.battery_health_state,
+        value_fn=lambda device: device.battery_health_state != 0,
         device_types=(NestProtect,),
         entity_registry_enabled_default=False,
     ),
