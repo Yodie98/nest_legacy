@@ -533,7 +533,7 @@ class NestParser:
             object_key=key,
             serial_number=value.get("serial_number", key.split(".")[1]),
             location=self._get_location(value, wheres_map),
-            name="Temperature Sensor",
+            name=value.get("description", "Temperature Sensor"),
             model=value.get("model"),
             software_version=value.get("software_version"),
             online=(time.time() - value.get("last_updated_at", 0)) < 3600 * 4,
