@@ -55,7 +55,13 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
-        device_types=(NestProtect, NestTempSensor, NestLock, NestCamera, NestThermostat),
+        device_types=(
+            NestProtect,
+            NestTempSensor,
+            NestLock,
+            NestCamera,
+            NestThermostat,
+        ),
     ),
     # Protect
     NestSensorEntityDescription(
