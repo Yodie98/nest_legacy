@@ -776,17 +776,24 @@ class NestClient:
             return
 
         payload = data.copy()
+        
+        # Legacy API does not support hot_water_mode directly
+        payload.pop("hot_water_mode", None)
+
         if "hot_water_boost" in payload:
             duration_seconds = payload.pop("hot_water_boost_duration", 1800)
-            if payload.pop("hot_water_boost"):
+            is_boost = payload.pop("hot_water_boost")
+            if is_boost:
                 end_timestamp = int(time.time()) + duration_seconds
             else:
                 end_timestamp = 0
             payload["hot_water_boost_time_to_end"] = end_timestamp
+            payload["hot_water_active"] = is_boost
 
-        await self._async_set_generic_property(
-            device.associated_thermostat_object_key, payload
-        )
+        if payload:
+            await self._async_set_generic_property(
+                device.associated_thermostat_object_key, payload
+            )
 
     async def _async_set_protobuf_heatlink_property(
         self,
