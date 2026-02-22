@@ -1779,10 +1779,15 @@ class NestClient:
                 )
             else:
                 await self._async_set_generic_property(device.object_key, data)
+        elif isinstance(device, NestTempSensor):
+            if "is_active_sensor" in data:
+                await self._async_set_sensor_active(device, data["is_active_sensor"])
+            else:
+                await self._async_set_generic_property(device.object_key, data)
         else:
             await self._async_set_generic_property(device.object_key, data)
 
-    async def async_set_sensor_active(
+    async def _async_set_sensor_active(
         self, device: NestTempSensor, active: bool
     ) -> None:
         """Set a temperature sensor as the active sensor for its thermostat."""

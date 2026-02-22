@@ -243,10 +243,5 @@ class NestSwitch(NestEntity, SwitchEntity):
         """Set the state of the switch."""
         key = self.entity_description.key
 
-        # Special handling for Sensor Active switch
-        if key == "is_active_sensor" and isinstance(self.device, NestTempSensor):
-            await self.coordinator.client.async_set_sensor_active(self.device, state)
-            return
-
         value = state
         await self._set_device_data({key: value})
