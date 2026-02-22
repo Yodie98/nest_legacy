@@ -345,6 +345,7 @@ class NestClient:
         self._raw_data: dict[str, Any] = {}
         self._buckets_for_subscription: list[Bucket] = []
         self._resource_types: dict[str, str] = {}
+        self._legacy_protobuf_events_warned: bool = False
 
         self._enable_protobuf_lock = enable_protobuf_lock
         self._enable_protobuf_thermostat = enable_protobuf_thermostat
@@ -2074,6 +2075,16 @@ class NestClient:
     ) -> list[dict[str, Any]]:
         """Get camera events from the cuepoint API."""
         if device.is_protobuf:
+            # Protobuf camera events fail with:
+            # "Command failed with code 7: Client is not authorized to access traits"
+            # on legacy non-Google accounts.
+            if self._camera_session_token is not None:
+                if not self._legacy_protobuf_events_warned:
+                    _LOGGER.warning(
+                        "Protobuf camera events are not supported for legacy Nest accounts."
+                    )
+                    self._legacy_protobuf_events_warned = True
+                return []
             return await self._async_get_protobuf_camera_events(
                 device, start_time, end_time
             )
