@@ -1376,7 +1376,7 @@ class NestClient:
 
             target_val = data.get("target_temperature")
 
-            if target_val:
+            if target_val is not None:
                 if eco_mode_settings_trait.ecoTemperatureHeat.enabled:
                     eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
                 if eco_mode_settings_trait.ecoTemperatureCool.enabled:
