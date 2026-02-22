@@ -31,7 +31,10 @@ _NEST_EVENT_TYPE_MAP = {
     "person": EVENT_TYPE_CAMERA_PERSON,
     "sound": EVENT_TYPE_CAMERA_SOUND,
     "person-talking": EVENT_TYPE_CAMERA_SOUND,  # Grouped with sound
+    "personHeard": EVENT_TYPE_CAMERA_SOUND,
+    "dogBarking": EVENT_TYPE_CAMERA_SOUND,
     "face": EVENT_TYPE_CAMERA_FACE,
+    "unfamiliar-face": EVENT_TYPE_CAMERA_FACE,
     "doorbell": EVENT_TYPE_DOORBELL_CHIME,
 }
 
@@ -65,7 +68,16 @@ _DESCRIPTIONS: tuple[NestEventEntityDescription, ...] = (
             EVENT_TYPE_CAMERA_SOUND,
             EVENT_TYPE_CAMERA_FACE,
         ],
-        event_filter=["motion", "person", "sound", "face", "person-talking"],
+        event_filter=[
+            "motion",
+            "person",
+            "sound",
+            "face",
+            "person-talking",
+            "personHeard",
+            "dogBarking",
+            "unfamiliar-face",
+        ],
         device_types=(NestCamera,),
     ),
 )
