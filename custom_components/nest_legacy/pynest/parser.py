@@ -813,6 +813,14 @@ class NestParser:
                 # Calculate middle point for 'target' if needed
                 target_temp = (target_low + target_high) / 2
                 hvac_mode = ThermostatHvacMode.RANGE
+
+        if (
+            target_temp_trait
+            and target_temp_trait.HasField("enabled")
+            and not target_temp_trait.enabled.value
+        ):
+            hvac_mode = ThermostatHvacMode.OFF
+
         return target_temp, target_low, target_high, hvac_mode
 
     def _parse_proto_hvac_state(
