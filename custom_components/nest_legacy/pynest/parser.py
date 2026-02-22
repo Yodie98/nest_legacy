@@ -1996,12 +1996,23 @@ class NestParser:
             and thermostat.heat_link_serial_number
         ):
             return None
+
+        raw_model = thermostat.heat_link_model
+        if raw_model.startswith("Amber-2"):
+            mapped_model = "Heat Link for Learning Thermostat (3rd gen, EU)"
+        elif raw_model.startswith("Amber-1"):
+            mapped_model = "Heat Link for Learning Thermostat (2nd gen, EU)"
+        elif "Agate" in raw_model:
+            mapped_model = "Heat Link for Thermostat E (1st gen, EU)"
+        else:
+            mapped_model = f"Heat Link ({raw_model})"
+
         return NestHeatLink(
             object_key=f"heatlink.{thermostat.heat_link_serial_number}",
             serial_number=thermostat.heat_link_serial_number,
             location=thermostat.location,
             name="Heat Link",
-            model=thermostat.heat_link_model,
+            model=mapped_model,
             software_version=thermostat.heat_link_sw_version,
             online=thermostat.online,
             associated_thermostat_object_key=thermostat.object_key,
