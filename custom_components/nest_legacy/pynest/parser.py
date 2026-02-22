@@ -476,7 +476,7 @@ class NestParser:
             can_heat=data.get("can_heat", False),
             can_cool=data.get("can_cool", False),
             has_fan=data.get("has_fan", False),
-            fan_state=data.get("fan_timer_timeout", 0) > 0,
+            fan_state=data.get("fan_timer_timeout", 0) > time.time(),
             fan_timer_speed=fan_timer_speed,
             fan_max_speed=fan_max_speed,
             fan_duration=data.get("fan_duration", 900),
