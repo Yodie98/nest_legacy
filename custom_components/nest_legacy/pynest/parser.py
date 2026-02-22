@@ -1913,6 +1913,7 @@ class NestParser:
             object_key=key,
             serial_number=serial_number,
             name=name,
+            location=_get_protobuf_location(traits),
             model="Temperature Sensor",
             online=online,
             current_temperature=temp_trait.temperatureValue.temperature.value,
