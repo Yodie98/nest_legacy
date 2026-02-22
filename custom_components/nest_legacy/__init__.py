@@ -7,6 +7,7 @@ import asyncio
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers.device_registry import DeviceEntry
 
 from .coordinator import NestConfigEntry, NestCoordinator
 
@@ -61,3 +62,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: NestConfigEntry) -> boo
     coordinator = entry.runtime_data
     coordinator.async_stop_subscriber()
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: NestConfigEntry, device_entry: DeviceEntry
+) -> bool:
+    """Remove a config entry from a device."""
+    return True
