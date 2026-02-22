@@ -2081,7 +2081,7 @@ class NestClient:
             if self._camera_session_token is not None:
                 if not self._legacy_protobuf_events_warned:
                     _LOGGER.warning(
-                        "Protobuf camera events are not supported for legacy Nest accounts."
+                        "Protobuf camera events are not supported for legacy Nest accounts"
                     )
                     self._legacy_protobuf_events_warned = True
                 return []
