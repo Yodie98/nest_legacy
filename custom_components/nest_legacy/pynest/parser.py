@@ -616,6 +616,7 @@ class NestParser:
         if not structure_key:
             return None  # Cannot control structure without its protobuf key
         mode = StructureMode.HOME
+        # The legacy REST API does not distinguish 'Sleep' from 'Home'
         if value.get("vacation_mode"):
             mode = StructureMode.VACATION
         elif value.get("away"):
