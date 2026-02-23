@@ -244,7 +244,9 @@ class NestParser:
         online = raw_data.get(widget_key, {}).get("online", False)
         replace_by_ts = value.get("replace_by_date_utc_secs")
         replace_by_date = (
-            datetime.date.fromtimestamp(replace_by_ts) if replace_by_ts else None
+            datetime.datetime.fromtimestamp(replace_by_ts, datetime.UTC).date()
+            if replace_by_ts
+            else None
         )
         if value.get("wired_or_battery") == 0:
             return NestWiredProtect(
@@ -1532,9 +1534,9 @@ class NestParser:
             nest_protect_pb2.LegacyProtectDeviceSettingsTrait.DESCRIPTOR.full_name
         )
         if settings and settings.HasField("replaceByDate"):
-            replace_by_date = datetime.date.fromtimestamp(
-                settings.replaceByDate.ToSeconds()
-            )
+            replace_by_date = datetime.datetime.fromtimestamp(
+                settings.replaceByDate.ToSeconds(), datetime.UTC
+            ).date()
 
         legacy_info = traits.get(
             nest_protect_pb2.LegacyProtectDeviceInfoTrait.DESCRIPTOR.full_name
