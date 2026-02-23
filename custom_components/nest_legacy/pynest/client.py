@@ -1434,16 +1434,35 @@ class NestClient:
             setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
 
         # Pre-fill heating/cooling targets from current state to avoid resetting un-updated values
-        heating_target = (
-            target_temperature_settings_trait.targetTemperature.heatingTarget.value
-            if target_temperature_settings_trait.HasField("targetTemperature")
-            else 0.0
-        )
-        cooling_target = (
-            target_temperature_settings_trait.targetTemperature.coolingTarget.value
-            if target_temperature_settings_trait.HasField("targetTemperature")
-            else 0.0
-        )
+        # If cache is cold, fall back to parsed device properties rather than 0.0°C
+        heating_target = 20.0
+        cooling_target = 25.0
+
+        if target_temperature_settings_trait.HasField("targetTemperature"):
+            if target_temperature_settings_trait.targetTemperature.HasField(
+                "heatingTarget"
+            ):
+                heating_target = target_temperature_settings_trait.targetTemperature.heatingTarget.value
+            if target_temperature_settings_trait.targetTemperature.HasField(
+                "coolingTarget"
+            ):
+                cooling_target = target_temperature_settings_trait.targetTemperature.coolingTarget.value
+        else:
+            if device.target_temperature_low is not None:
+                heating_target = device.target_temperature_low
+            elif (
+                device.hvac_mode == ThermostatHvacMode.HEAT
+                and device.target_temperature is not None
+            ):
+                heating_target = device.target_temperature
+
+            if device.target_temperature_high is not None:
+                cooling_target = device.target_temperature_high
+            elif (
+                device.hvac_mode == ThermostatHvacMode.COOL
+                and device.target_temperature is not None
+            ):
+                cooling_target = device.target_temperature
 
         temp_val = data.get("target_temperature")
 
