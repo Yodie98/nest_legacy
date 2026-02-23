@@ -3,7 +3,7 @@
         "abort": {
             "already_configured": "Account is already configured",
             "reauth_successful": "Re-authentication was successful",
-            "reconfigure_successful": "Re-configuration was successful",
+            "reconfigure_successful": "Reconfiguration was successful",
             "unique_id_mismatch": "Please ensure you reconfigure against the same account."
         },
         "error": {

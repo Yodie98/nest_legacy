@@ -104,7 +104,7 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input:
             try:
                 info = await self._validate_input(user_input)
-            except (TimeoutError, ClientError):
+            except TimeoutError, ClientError:
                 errors["base"] = "cannot_connect"
             except BadCredentialsException:
                 errors["base"] = "invalid_auth"

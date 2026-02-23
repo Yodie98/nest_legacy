@@ -48,9 +48,9 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="battery_level",
         translation_key="battery_level",
-        value_fn=lambda device: round(device.battery_level)
-        if device.battery_level is not None
-        else None,
+        value_fn=lambda device: (
+            round(device.battery_level) if device.battery_level is not None else None
+        ),
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -75,11 +75,13 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="latest_manual_test_end_utc_secs",
         translation_key="last_manual_test",
-        value_fn=lambda device: datetime.datetime.fromtimestamp(
-            device.latest_manual_test_end_utc_secs, datetime.UTC
-        )
-        if device.latest_manual_test_end_utc_secs > 0
-        else None,
+        value_fn=lambda device: (
+            datetime.datetime.fromtimestamp(
+                device.latest_manual_test_end_utc_secs, datetime.UTC
+            )
+            if device.latest_manual_test_end_utc_secs > 0
+            else None
+        ),
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_types=(NestProtect,),
@@ -88,11 +90,13 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="last_audio_self_test_end_utc_secs",
         translation_key="last_audio_self_test",
-        value_fn=lambda device: datetime.datetime.fromtimestamp(
-            device.last_audio_self_test_end_utc_secs, datetime.UTC
-        )
-        if device.last_audio_self_test_end_utc_secs > 0
-        else None,
+        value_fn=lambda device: (
+            datetime.datetime.fromtimestamp(
+                device.last_audio_self_test_end_utc_secs, datetime.UTC
+            )
+            if device.last_audio_self_test_end_utc_secs > 0
+            else None
+        ),
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_types=(NestProtect,),
@@ -102,9 +106,11 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="current_temperature",
         translation_key="temperature",
-        value_fn=lambda device: round(device.current_temperature, 2)
-        if device.current_temperature is not None
-        else None,
+        value_fn=lambda device: (
+            round(device.current_temperature, 2)
+            if device.current_temperature is not None
+            else None
+        ),
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
@@ -174,11 +180,11 @@ _FAN_DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="fan_timer_timeout",
         translation_key="fan_timer_timeout",
-        value_fn=lambda device: datetime.datetime.fromtimestamp(
-            device.fan_timer_timeout, datetime.UTC
-        )
-        if device.fan_timer_timeout > 0
-        else None,
+        value_fn=lambda device: (
+            datetime.datetime.fromtimestamp(device.fan_timer_timeout, datetime.UTC)
+            if device.fan_timer_timeout > 0
+            else None
+        ),
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_types=(NestThermostat,),

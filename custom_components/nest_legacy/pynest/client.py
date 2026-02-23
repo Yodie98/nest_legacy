@@ -336,7 +336,7 @@ class NestClient:
         enable_protobuf_camera: bool = False,
     ) -> None:
         """Initialize NestClient."""
-        self._session = session if session else ClientSession()
+        self._session = session or ClientSession()
         self._environment = _NEST_ENVIRONMENTS[
             Environment.FIELDTEST if field_test else Environment.PRODUCTION
         ]
@@ -2158,7 +2158,7 @@ class NestClient:
             data = await response.json()
             try:
                 return data["items"][0].get("properties", {})
-            except (KeyError, IndexError):
+            except KeyError, IndexError:
                 return {}
 
     async def async_observe_for_updates(self):
