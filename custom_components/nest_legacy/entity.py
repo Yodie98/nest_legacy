@@ -53,11 +53,12 @@ class NestEntity(CoordinatorEntity[NestCoordinator], Generic[DeviceT]):
 
     def generate_device_info(self) -> DeviceInfo:
         """Generate the device info for the entity."""
-        device_name = (
-            f"{self._device.location} {self._device.name}"
-            if self._device.location
-            else self._device.name
-        ).strip()
+        location = self._device.location
+        name = self._device.name
+        if location and location.lower() not in name.lower():
+            device_name = f"{location} {name}".strip()
+        else:
+            device_name = name.strip()
 
         device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device.serial_number)},
