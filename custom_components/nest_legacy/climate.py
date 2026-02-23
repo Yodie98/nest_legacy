@@ -112,6 +112,8 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         """Return the current running hvac operation."""
+        if self.hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
         return _HVAC_ACTION_MAP.get(self.device.hvac_state)
 
     @property
