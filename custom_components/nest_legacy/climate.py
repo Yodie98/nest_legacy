@@ -39,6 +39,7 @@ _HVAC_ACTION_MAP = {
     ThermostatHvacState.OFF: HVACAction.IDLE,
     ThermostatHvacState.HEATING: HVACAction.HEATING,
     ThermostatHvacState.COOLING: HVACAction.COOLING,
+    ThermostatHvacState.FAN: HVACAction.FAN,
 }
 
 

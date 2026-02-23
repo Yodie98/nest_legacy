@@ -74,6 +74,7 @@ class ThermostatHvacState(StrEnum):
     OFF = "off"
     HEATING = "heating"
     COOLING = "cooling"
+    FAN = "fan"
 
 
 @unique

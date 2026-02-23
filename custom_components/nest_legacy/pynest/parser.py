@@ -378,6 +378,8 @@ class NestParser:
             or data.get("hvac_cool_x3_state")
         ):
             hvac_state = ThermostatHvacState.COOLING
+        elif data.get("fan_timer_timeout", 0) > 0 or data.get("hvac_fan_state", False):
+            hvac_state = ThermostatHvacState.FAN
 
         temp_scale_value = data.get("temperature_scale")
         try:
@@ -824,7 +826,7 @@ class NestParser:
         return target_temp, target_low, target_high, hvac_mode
 
     def _parse_proto_hvac_state(
-        self, hvac_trait: nest_hvac_pb2.HvacControlTrait
+        self, hvac_trait: nest_hvac_pb2.HvacControlTrait, fan_state: bool
     ) -> ThermostatHvacState:
         """Determine HVAC action state from traits."""
         hvac_state = ThermostatHvacState.OFF
@@ -844,6 +846,8 @@ class NestParser:
             or hvac_trait.hvacState.coolStage3Active
         ):
             hvac_state = ThermostatHvacState.COOLING
+        elif fan_state:
+            hvac_state = ThermostatHvacState.FAN
         return hvac_state
 
     def _parse_proto_fan(
@@ -1134,9 +1138,6 @@ class NestParser:
             if hvac_trait.hvacState.dehumidifierActive:
                 dehumidifier_state = True
 
-        # HVAC State (using helper)
-        hvac_state = self._parse_proto_hvac_state(hvac_trait)
-
         # Fan (using helper)
         (
             has_fan,
@@ -1146,6 +1147,9 @@ class NestParser:
             fan_duration,
             fan_max_speed,
         ) = self._parse_proto_fan(traits)
+
+        # HVAC State (using helper)
+        hvac_state = self._parse_proto_hvac_state(hvac_trait, fan_state)
 
         # Temperature Lock Settings
         lock_trait: nest_hvac_pb2.TemperatureLockSettingsTrait | None = traits.get(

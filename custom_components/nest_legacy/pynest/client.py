@@ -776,7 +776,7 @@ class NestClient:
             return
 
         payload = data.copy()
-        
+
         # Legacy API does not support hot_water_mode directly
         payload.pop("hot_water_mode", None)
 
