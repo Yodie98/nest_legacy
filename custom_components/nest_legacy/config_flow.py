@@ -43,6 +43,7 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Nest."""
 
     VERSION = 1
+    MINOR_VERSION = 1
 
     _options: dict[str, Any] = {}
 
