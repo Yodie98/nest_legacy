@@ -23,6 +23,8 @@ from .entity import NestEntity
 from .pynest.enums import TemperatureScale, ThermostatHvacMode, ThermostatHvacState
 from .pynest.models import NestThermostat
 
+PARALLEL_UPDATES = 0
+
 _THERMOSTAT_MIN_TEMPERATURE = 9
 _THERMOSTAT_MAX_TEMPERATURE = 32
 

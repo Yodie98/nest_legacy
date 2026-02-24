@@ -25,6 +25,8 @@ from .events import (
 )
 from .pynest.models import NestCamera, NestDevice, NestDoorbell
 
+PARALLEL_UPDATES = 0
+
 # Maps Nest API event types to Home Assistant event types
 _NEST_EVENT_TYPE_MAP = {
     "motion": EVENT_TYPE_CAMERA_MOTION,

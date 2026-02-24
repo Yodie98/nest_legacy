@@ -16,6 +16,8 @@ from .entity import NestEntity
 from .pynest.enums import StructureMode
 from .pynest.models import NestProtect, NestStructure
 
+PARALLEL_UPDATES = 0
+
 _BRIGHTNESS_BIDICT: bidict[int, str] = bidict({1: "low", 2: "medium", 3: "high"})
 
 

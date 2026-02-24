@@ -13,6 +13,8 @@ from .entity import NestEntity
 from .pynest.enums import LockBoltState
 from .pynest.models import NestLock
 
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

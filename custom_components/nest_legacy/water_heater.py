@@ -19,6 +19,8 @@ from .entity import NestEntity
 from .pynest.enums import HotWaterMode
 from .pynest.models import NestHeatLink
 
+PARALLEL_UPDATES = 0
+
 MODE_SCHEDULE = "schedule"
 MODE_BOOST = "boost"
 MODE_BOOST_30M = "boost_30m"

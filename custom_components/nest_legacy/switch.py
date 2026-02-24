@@ -22,6 +22,8 @@ from .pynest.models import (
     NestThermostat,
 )
 
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class NestSwitchEntityDescription(SwitchEntityDescription):

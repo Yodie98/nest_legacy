@@ -15,6 +15,8 @@ from .entity import NestEntity
 from .pynest.exceptions import PynestException
 from .pynest.models import NestCamera as NestCameraModel
 
+PARALLEL_UPDATES = 0
+
 _LOGGER = logging.getLogger(__name__)
 
 
