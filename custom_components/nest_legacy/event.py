@@ -39,6 +39,22 @@ _NEST_EVENT_TYPE_MAP = {
 }
 
 
+# Priority order for selecting a single HA event type when a Nest event carries
+# multiple types simultaneously (e.g. ["person", "face"]). More specific types
+# rank higher so the richest event type wins.
+_NEST_EVENT_TYPE_PRIORITY: list[str] = [
+    "doorbell",
+    "face",
+    "unfamiliar-face",
+    "person",
+    "personHeard",
+    "person-talking",
+    "dogBarking",
+    "sound",
+    "motion",
+]
+
+
 @dataclass(frozen=True, kw_only=True)
 class NestEventEntityDescription(EventEntityDescription):
     """Entity description for Nest event entities."""
@@ -127,40 +143,45 @@ class NestEventEntity(NestEntity[NestDevice], EventEntity):
         nest_event = event_data.get("nest_event", {})
         nest_event_types = nest_event.get("types", [])
 
-        triggered = False
-        for nest_type in nest_event_types:
-            if nest_type not in self.entity_description.event_filter:
-                continue
+        # Find the single most specific matching type via the priority list.
+        nest_type = next(
+            (
+                t
+                for t in _NEST_EVENT_TYPE_PRIORITY
+                if t in nest_event_types and t in self.entity_description.event_filter
+            ),
+            None,
+        )
+        if nest_type is None:
+            return
 
-            event_type = _NEST_EVENT_TYPE_MAP.get(nest_type)
-            if not event_type:
-                LOGGER.warning(
-                    "Received unmapped Nest event type '%s' for device %s",
-                    nest_type,
-                    self.device.serial_number,
-                )
-                continue
+        event_type = _NEST_EVENT_TYPE_MAP.get(nest_type)
+        if not event_type:
+            LOGGER.warning(
+                "Received unmapped Nest event type '%s' for device %s",
+                nest_type,
+                self.device.serial_number,
+            )
+            return
 
-            attributes = {
-                "nest_event_id": nest_event.get("id"),
-                "camera_uuid": nest_event.get("camera_uuid"),
-                "start_time": nest_event.get("start_time"),
-                "end_time": nest_event.get("end_time"),
-                "playback_time": nest_event.get("playback_time"),
-                "in_progress": nest_event.get("in_progress"),
-                "face_id": nest_event.get("face_id"),
-                "face_name": nest_event.get("face_name"),
-                "zone_ids": nest_event.get("zone_ids"),
-                "importance": nest_event.get("importance"),
-                "is_important": nest_event.get("is_important"),
-                "face_category": nest_event.get("face_category"),
-            }
+        attributes = {
+            "nest_event_id": nest_event.get("id"),
+            "camera_uuid": nest_event.get("camera_uuid"),
+            "start_time": nest_event.get("start_time"),
+            "end_time": nest_event.get("end_time"),
+            "playback_time": nest_event.get("playback_time"),
+            "in_progress": nest_event.get("in_progress"),
+            "face_id": nest_event.get("face_id"),
+            "face_name": nest_event.get("face_name"),
+            "zone_ids": nest_event.get("zone_ids"),
+            "importance": nest_event.get("importance"),
+            "is_important": nest_event.get("is_important"),
+            "face_category": nest_event.get("face_category"),
+            "all_event_types": nest_event_types,
+        }
 
-            self._trigger_event(event_type, attributes)
-            triggered = True
-
-        if triggered:
-            self.async_write_ha_state()
+        self._trigger_event(event_type, attributes)
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""

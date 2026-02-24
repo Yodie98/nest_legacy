@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import logging
 import random
 import time
@@ -91,7 +92,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self._observe_task: asyncio.Task | None = None
         self._poll_task: asyncio.Task | None = None
         self._raw_data: dict[str, Any] = {}
-        self._last_event_ids: dict[str, str] = {}
+        self._processed_event_ids: deque[str] = deque(maxlen=100)
         self._last_event_poll_success_time: float | None = None
         self.first_protobuf_update_received = asyncio.Event()
 
@@ -467,26 +468,31 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         if not events:
             return
 
-        newest_event = max(events, key=lambda ev: ev["start_time"])
-        event_id = newest_event.get("id")
-        if not event_id:
-            return
+        # Sort by start_time so we process oldest to newest
+        events = sorted(events, key=lambda ev: ev.get("start_time", 0))
 
-        if self._last_event_ids.get(device.serial_number) == event_id:
-            return
+        for event in events:
+            event_id = event.get("id")
+            if not event_id or event_id in self._processed_event_ids:
+                continue
 
-        _LOGGER.debug(
-            "New event for %s %s: %s", device.location, device.name, newest_event
-        )
-        self._last_event_ids[device.serial_number] = event_id
+            self._processed_event_ids.append(event_id)
 
-        self.hass.bus.async_fire(
-            NEST_LEGACY_EVENT,
-            {
-                "serial_number": device.serial_number,
-                "nest_event": newest_event,
-            },
-        )
+            _LOGGER.debug(
+                "New event for %s %s: %s", device.location, device.name, event
+            )
+
+            self.hass.bus.async_fire(
+                NEST_LEGACY_EVENT,
+                {
+                    "serial_number": device.serial_number,
+                    "nest_event": event,
+                },
+            )
+
+            # CRITICAL: Prevent distinct historical events from firing in the exact
+            # same millisecond, which causes HA to drop them as duplicates.
+            await asyncio.sleep(0.001)
 
     async def _async_update_camera_properties(self, device: NestCamera) -> None:
         """Update the detailed properties for a single camera."""
