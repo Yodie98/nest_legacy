@@ -441,6 +441,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                         "Unknown error polling for events. Retrying in %ds", delay
                     )
                 await asyncio.sleep(delay)
+                continue
 
             await asyncio.sleep(poll_interval)
 
