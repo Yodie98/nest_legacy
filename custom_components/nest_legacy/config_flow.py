@@ -159,7 +159,7 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_user(self._options)
 
     async def async_step_reconfigure(
-        self, user_input: Mapping[str, Any]
+        self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle reconfiguration."""
         reconfigure_entry = self._get_reconfigure_entry()
