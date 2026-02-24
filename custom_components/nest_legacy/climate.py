@@ -14,7 +14,7 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
+from homeassistant.const import ATTR_TEMPERATURE, PRECISION_HALVES, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -77,7 +77,7 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
         )
         self._attr_min_temp = _THERMOSTAT_MIN_TEMPERATURE
         self._attr_max_temp = _THERMOSTAT_MAX_TEMPERATURE
-        self._attr_target_temperature_step = 0.5
+        self._attr_target_temperature_step = PRECISION_HALVES
 
         features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
