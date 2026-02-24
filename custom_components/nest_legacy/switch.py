@@ -212,7 +212,7 @@ async def async_setup_entry(
     async_add_devices(entities)
 
 
-class NestSwitch(NestEntity, SwitchEntity):
+class NestSwitch(NestEntity[NestDevice], SwitchEntity):
     """Representation of a Nest Switch."""
 
     entity_description: NestSwitchEntityDescription

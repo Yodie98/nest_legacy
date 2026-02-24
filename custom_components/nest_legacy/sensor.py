@@ -222,7 +222,7 @@ async def async_setup_entry(
     async_add_devices(entities)
 
 
-class NestSensor(NestEntity, SensorEntity):
+class NestSensor(NestEntity[NestDevice], SensorEntity):
     """Representation of a Nest Sensor."""
 
     entity_description: NestSensorEntityDescription
