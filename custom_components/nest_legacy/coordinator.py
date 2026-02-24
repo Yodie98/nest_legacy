@@ -40,7 +40,7 @@ from .pynest.exceptions import (
     NotAuthenticatedException,
     PynestException,
 )
-from .pynest.models import NestCamera, NestDevice, NestHeatLink
+from .pynest.models import NestCamera, NestDevice, NestHeatLink, NestTempSensor
 from .pynest.parser import NestParser
 
 _LOGGER = logging.getLogger(__name__)
@@ -157,9 +157,9 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             current_traits = None
             if device.is_protobuf:
                 resource_id = device.object_key
-                # HeatLinks are controlled via their associated thermostat resource
+                # HeatLinks and Temp Sensors are controlled via their associated thermostat resource
                 if (
-                    isinstance(device, NestHeatLink)
+                    isinstance(device, (NestHeatLink, NestTempSensor))
                     and device.associated_thermostat_object_key
                 ):
                     resource_id = device.associated_thermostat_object_key

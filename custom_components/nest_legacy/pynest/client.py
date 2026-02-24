@@ -1434,7 +1434,7 @@ class NestClient:
             setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
 
         # Pre-fill heating/cooling targets from current state to avoid resetting un-updated values
-        # If cache is cold, fall back to parsed device properties rather than 0.0°C
+        # If cache is cold, fall back to parsed device properties rather than 0.0Â°C
         heating_target = 20.0
         cooling_target = 25.0
 
@@ -1807,14 +1807,19 @@ class NestClient:
                 await self._async_set_generic_property(device.object_key, data)
         elif isinstance(device, NestTempSensor):
             if "is_active_sensor" in data:
-                await self._async_set_sensor_active(device, data["is_active_sensor"])
+                await self._async_set_sensor_active(
+                    device, data["is_active_sensor"], current_traits
+                )
             else:
                 await self._async_set_generic_property(device.object_key, data)
         else:
             await self._async_set_generic_property(device.object_key, data)
 
     async def _async_set_sensor_active(
-        self, device: NestTempSensor, active: bool
+        self,
+        device: NestTempSensor,
+        active: bool,
+        current_traits: dict[str, Any] | None = None,
     ) -> None:
         """Set a temperature sensor as the active sensor for its thermostat."""
         if not device.associated_thermostat_object_key:
@@ -1824,12 +1829,15 @@ class NestClient:
             return
 
         if device.is_protobuf:
-            await self._async_set_protobuf_sensor_active(device, active)
+            await self._async_set_protobuf_sensor_active(device, active, current_traits)
         else:
             await self._async_set_legacy_sensor_active(device, active)
 
     async def _async_set_protobuf_sensor_active(
-        self, device: NestTempSensor, active: bool
+        self,
+        device: NestTempSensor,
+        active: bool,
+        current_traits: dict[str, Any] | None = None,
     ) -> None:
         """Set active sensor via Protobuf."""
         # We need the current RCS trait to ensure we don't wipe other settings
@@ -1840,7 +1848,6 @@ class NestClient:
                 "Sensor %s is not associated with any thermostat", device.name
             )
             return
-        current_traits = self._raw_data.get(thermostat_key)
 
         rcs_trait = _get_trait_copy(
             current_traits, nest_hvac_pb2.RemoteComfortSensingSettingsTrait
