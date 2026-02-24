@@ -115,12 +115,12 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 data = {**self._options, **user_input}
                 if self.source == SOURCE_REAUTH:
-                    self._abort_if_unique_id_mismatch()
+                    self._abort_if_unique_id_mismatch(reason="wrong_account")
                     return self.async_update_reload_and_abort(
                         self._get_reauth_entry(), data=data
                     )
                 if self.source == SOURCE_RECONFIGURE:
-                    self._abort_if_unique_id_mismatch()
+                    self._abort_if_unique_id_mismatch(reason="wrong_account")
                     return self.async_update_reload_and_abort(
                         self._get_reconfigure_entry(), data=data
                     )
