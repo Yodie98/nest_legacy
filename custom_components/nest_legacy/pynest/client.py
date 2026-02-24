@@ -18,9 +18,9 @@ from aiohttp import (
     FormData,
 )
 import google.protobuf.any_pb2
-from google.protobuf.duration_pb2 import Duration
+from google.protobuf.duration_pb2 import Duration  # pylint: disable=no-name-in-module
 from google.protobuf.message import Message
-from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.timestamp_pb2 import Timestamp  # pylint: disable=no-name-in-module
 
 from .enums import BucketType, Environment, StructureMode, ThermostatHvacMode
 from .exceptions import (
@@ -2184,7 +2184,7 @@ class NestClient:
             data = await response.json()
             try:
                 return data["items"][0].get("properties", {})
-            except KeyError, IndexError:
+            except (KeyError, IndexError):
                 return {}
 
     async def async_observe_for_updates(self):

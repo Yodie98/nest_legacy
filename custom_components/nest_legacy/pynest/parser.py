@@ -388,7 +388,7 @@ class NestParser:
             temp_scale = (
                 TemperatureScale(temp_scale_value) if temp_scale_value else None
             )
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             _LOGGER.warning(
                 "Unsupported value for TemperatureScale: '%s'. Defaulting to None",
                 temp_scale_value,
@@ -560,7 +560,7 @@ class NestParser:
             try:
                 volts = float(props["rq_battery_battery_volt"])
                 battery_level = _scale_value(volts, 0.0, 5.4, 0.0, 100.0)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 pass
 
         if "doorbell" in model.lower():
