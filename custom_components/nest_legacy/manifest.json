@@ -6,6 +6,7 @@
   "config_flow": true,
   "dependencies": ["http"],
   "documentation": "https://github.com/tronikos/nest_legacy",
+  "integration_type": "hub",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/tronikos/nest_legacy/issues",
   "requirements": ["protobuf>=6.31.1"],
