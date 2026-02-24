@@ -67,8 +67,8 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             _LOGGER,
             name=DOMAIN,
             update_interval=None,  # This coordinator is push-based (except for events)
+            config_entry=entry,
         )
-        self.config_entry = entry
         self.client = NestClient(
             async_create_clientsession(hass),
             field_test=entry.data.get(CONF_FIELD_TEST, False),
