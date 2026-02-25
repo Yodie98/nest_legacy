@@ -122,20 +122,23 @@ You will be asked to select your account type. Follow the instructions below bas
 
 For accounts migrated to Google, or created after August 2019. You will need to retrieve an `issue_token` and `cookies` from your browser.
 
+⚠️ **CRITICAL BROWSER WARNING:** **Do NOT use Google Chrome or Microsoft Edge** to get these cookies. Chromium-based browsers use aggressive, hardware-bound security sessions with Google. If you use Chrome, your integration will authenticate successfully but will fail after a few hours or immediately upon restarting Home Assistant. Spoofing the User-Agent in Chrome will not bypass this.
+**You MUST use Safari or Firefox (Private/Incognito mode recommended)** to capture a long-lived cookie.
+
 (Instructions adapted from the `homebridge-nest` project).
 
-1. Open a Chrome browser tab in **Incognito Mode**.
-2. Open Developer Tools (View > Developer > Developer Tools, or `Ctrl+Shift+I` / `Cmd+Option+I`).
-3. Click on the **Network** tab. Make sure **Preserve Log** is checked.
+1. Open a **Safari** or **Firefox** browser tab in Private/Incognito Mode.
+2. Open Developer Tools (usually right-click -> Inspect, or in Safari: Develop -> Show Web Inspector).
+3. Click on the **Network** tab. Make sure **Preserve Log** (or "Persist Logs") is checked.
 4. In the 'Filter' box, enter `issueToken`.
 5. Go to `home.nest.com`, and click **Sign in with Google**. Log into your account.
 6. One network call (beginning with `iframerpc`) will appear in the Dev Tools window. Click on it.
-7. In the **Headers** tab, under **General**, copy the entire **Request URL**. This is your `Issue token`.
+7. In the **Headers** tab, under **General** (or "Headers" in Safari), copy the entire **Request URL**. This is your `Issue token`.
 8. Clear the filter box and now enter `oauth2/iframe`.
 9. Several network calls will appear. Click on the **last `iframe` call**.
 10. In the **Headers** tab, under **Request Headers**, find the `cookie` entry. Copy the **entire cookie string** (it will be very long). This is your `Cookies`.
 11. Paste these values into the Home Assistant configuration form.
-12. **Do not log out of `home.nest.com`**, as this will invalidate your credentials. Just close the browser tab.
+12. **Do not log out of `home.nest.com`**, as this will immediately invalidate your credentials. Just close the browser tab.
 
 ### Option B: Legacy Nest Account
 
