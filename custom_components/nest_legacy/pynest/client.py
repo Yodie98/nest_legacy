@@ -93,7 +93,10 @@ _OBSERVE_THERMOSTAT_TRAITS = (
     # Thermostat / HVAC
     nest_hvac_pb2.HvacControlTrait,
     nest_hvac_pb2.KryptoniteObservedBeaconTrait,
-    nest_hvac_pb2.SetPointScheduleSettingsTrait,
+    # Commented out since it's unused and causes conflict on
+    # labels ('heat_schedule_settings' and 'cool_schedule_settings')
+    # that would need to be added in _LABEL_SPECIFIC_TRAITS.
+    # nest_hvac_pb2.SetPointScheduleSettingsTrait,
     nest_hvac_pb2.RemoteComfortSensingSettingsTrait,
     nest_hvac_pb2.EquipmentSettingsTrait,
     nest_hvac_pb2.HvacEquipmentCapabilitiesTrait,
