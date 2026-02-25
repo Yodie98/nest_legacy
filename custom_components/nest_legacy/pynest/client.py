@@ -521,6 +521,10 @@ class NestClient:
         """Check if the current session is expired."""
         if not self._nest_session:
             return True
+        # Note: For legacy Nest accounts, reverse-engineering of the camera
+        # session token (JWT) confirms it is issued with an expiration identical
+        # to the main Nest access token (~30 days). Checking the main session's
+        # expiration is sufficient to rotate both tokens simultaneously.
         return self._nest_session.is_expired()
 
     def _filter_buckets(self, buckets: list[Bucket]) -> list[Bucket]:
