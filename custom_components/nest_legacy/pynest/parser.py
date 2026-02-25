@@ -1999,31 +1999,37 @@ class NestParser:
     def _create_heatlink(self, thermostat: NestThermostat) -> NestHeatLink | None:
         """Create a virtual Heat Link device from thermostat data."""
         if not (
-            thermostat.heat_link_model
-            and thermostat.has_hot_water_control
-            and thermostat.heat_link_serial_number
+            thermostat.has_hot_water_control or thermostat.has_hot_water_temperature
         ):
             return None
 
-        raw_model = thermostat.heat_link_model
+        raw_model = thermostat.heat_link_model or ""
         if raw_model.startswith("Amber-2"):
             mapped_model = "Heat Link for Learning Thermostat (3rd gen, EU)"
         elif raw_model.startswith("Amber-1"):
             mapped_model = "Heat Link for Learning Thermostat (2nd gen, EU)"
         elif "Agate" in raw_model:
             mapped_model = "Heat Link for Thermostat E (1st gen, EU)"
-        else:
+        elif raw_model:
             mapped_model = f"Heat Link ({raw_model})"
+        else:
+            mapped_model = "Hot Water Control"
+
+        serial_number = (
+            thermostat.heat_link_serial_number
+            or f"{thermostat.serial_number}-hot-water"
+        )
 
         return NestHeatLink(
-            object_key=f"heatlink.{thermostat.heat_link_serial_number}",
-            serial_number=thermostat.heat_link_serial_number,
+            object_key=f"heatlink.{serial_number}",
+            serial_number=serial_number,
             location=thermostat.location,
-            name="Heat Link",
+            name="Heat Link" if thermostat.heat_link_serial_number else "Hot Water",
             model=mapped_model,
             software_version=thermostat.heat_link_sw_version,
             online=thermostat.online,
             associated_thermostat_object_key=thermostat.object_key,
+            has_hot_water_control=thermostat.has_hot_water_control,
             hot_water_active=thermostat.hot_water_active,
             has_hot_water_temperature=thermostat.has_hot_water_temperature,
             hot_water_boost_time_to_end=thermostat.hot_water_boost_time_to_end,

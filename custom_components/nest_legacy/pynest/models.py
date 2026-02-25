@@ -180,6 +180,7 @@ class NestHeatLink(NestDevice):
     """Represents a Nest Heat Link (for hot water control)."""
 
     associated_thermostat_object_key: str | None = None
+    has_hot_water_control: bool = False
     hot_water_active: bool = False
     has_hot_water_temperature: bool = False
     hot_water_boost_time_to_end: int = 0

@@ -14,7 +14,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import NestConfigEntry
+from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
 from .pynest.enums import HotWaterMode
 from .pynest.models import NestHeatLink
@@ -56,17 +56,24 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
 
     _attr_name = None  # Main feature of the device
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_operation_list = [
-        STATE_OFF,
-        MODE_SCHEDULE,
-        MODE_BOOST,
-        MODE_BOOST_30M,
-        MODE_BOOST_1H,
-        MODE_BOOST_2H,
-    ]
     _attr_min_temp = 30.0
     _attr_max_temp = 70.0
     _attr_translation_key = "heat_link"
+
+    def __init__(self, coordinator: NestCoordinator, device: NestHeatLink) -> None:
+        """Initialize the water heater."""
+        super().__init__(coordinator, device)
+        if device.has_hot_water_control:
+            self._attr_operation_list = [
+                STATE_OFF,
+                MODE_SCHEDULE,
+                MODE_BOOST,
+                MODE_BOOST_30M,
+                MODE_BOOST_1H,
+                MODE_BOOST_2H,
+            ]
+        else:
+            self._attr_operation_list = [STATE_OFF, MODE_SCHEDULE]
 
     @property
     def supported_features(self) -> WaterHeaterEntityFeature:
@@ -88,7 +95,7 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
         end_time = self.device.hot_water_boost_time_to_end
 
         # If the API returns 0 or a past time, boost is off
-        if end_time > current_time:
+        if self.device.has_hot_water_control and end_time > current_time:
             remaining = end_time - current_time
             if remaining > 3600:
                 return MODE_BOOST_2H
