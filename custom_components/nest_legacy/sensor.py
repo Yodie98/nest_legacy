@@ -108,11 +108,7 @@ _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
     NestSensorEntityDescription(
         key="current_temperature",
         translation_key="temperature",
-        value_fn=lambda device: (
-            round(device.current_temperature, 2)
-            if device.current_temperature is not None
-            else None
-        ),
+        value_fn=lambda device: device.current_temperature,
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,

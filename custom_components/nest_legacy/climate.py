@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
-from .pynest.enums import TemperatureScale, ThermostatHvacMode, ThermostatHvacState
+from .pynest.enums import ThermostatHvacMode, ThermostatHvacState
 from .pynest.models import NestThermostat
 
 PARALLEL_UPDATES = 0
@@ -72,11 +72,7 @@ class NestClimate(NestEntity[NestThermostat], ClimateEntity):
     ) -> None:
         """Initialize the climate entity."""
         super().__init__(coordinator, device)
-        self._attr_temperature_unit = (
-            UnitOfTemperature.FAHRENHEIT
-            if device.temperature_scale == TemperatureScale.FAHRENHEIT
-            else UnitOfTemperature.CELSIUS
-        )
+        self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_min_temp = _THERMOSTAT_MIN_TEMPERATURE
         self._attr_max_temp = _THERMOSTAT_MAX_TEMPERATURE
         self._attr_target_temperature_step = PRECISION_HALVES

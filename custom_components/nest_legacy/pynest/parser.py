@@ -53,6 +53,20 @@ from .protobuf_gen.weave.trait import (
 )
 
 
+def _round_temp(temp: Any, scale: TemperatureScale | None) -> float | None:
+    """Round temperature to nearest 0.5 C or 1 F based on the device's scale."""
+    if temp is None:
+        return None
+    try:
+        temp_float = float(temp)
+    except (ValueError, TypeError):
+        return None
+    if scale == TemperatureScale.FAHRENHEIT:
+        temp_f = round(temp_float * 1.8 + 32.0)
+        return (temp_f - 32.0) / 1.8
+    return round(temp_float * 2.0) / 2.0
+
+
 def _scale_value(
     value: float,
     source_min: float,
@@ -386,14 +400,16 @@ class NestParser:
         temp_scale_value = data.get("temperature_scale")
         try:
             temp_scale = (
-                TemperatureScale(temp_scale_value) if temp_scale_value else None
+                TemperatureScale(temp_scale_value)
+                if temp_scale_value
+                else TemperatureScale.CELSIUS
             )
         except (ValueError, TypeError):
             _LOGGER.warning(
-                "Unsupported value for TemperatureScale: '%s'. Defaulting to None",
+                "Unsupported value for TemperatureScale: '%s'. Defaulting to Celsius",
                 temp_scale_value,
             )
-            temp_scale = None
+            temp_scale = TemperatureScale.CELSIUS
 
         is_eco = data.get("eco", {}).get("mode") in ("auto-eco", "manual-eco")
         if is_eco:
@@ -441,6 +457,11 @@ class NestParser:
                     sensor_data = raw_data[sensor_key]
                     current_temperature = sensor_data.get("current_temperature")
 
+        current_temperature = _round_temp(current_temperature, temp_scale)
+        target_temperature = _round_temp(data.get("target_temperature"), temp_scale)
+        target_low = _round_temp(target_low, temp_scale)
+        target_high = _round_temp(target_high, temp_scale)
+
         fan_timer_speed_str = data.get("fan_timer_speed", "stage0").replace("stage", "")
         fan_timer_speed = (
             int(fan_timer_speed_str)
@@ -466,8 +487,10 @@ class NestParser:
             online=online,
             temperature_scale=temp_scale,
             current_temperature=current_temperature,
-            backplate_temperature=value.get("backplate_temperature"),
-            target_temperature=data.get("target_temperature"),
+            backplate_temperature=_round_temp(
+                value.get("backplate_temperature"), temp_scale
+            ),
+            target_temperature=target_temperature,
             target_temperature_low=target_low,
             target_temperature_high=target_high,
             current_humidity=data.get("current_humidity"),
@@ -498,8 +521,12 @@ class NestParser:
             hot_water_mode=HotWaterMode(data.get("hot_water_mode", "off")),
             hot_water_away_enabled=data.get("hot_water_away_enabled", False),
             hot_water_boost_time_to_end=data.get("hot_water_boost_time_to_end", 0),
-            hot_water_temperature=data.get("hot_water_temperature"),
-            current_water_temperature=data.get("current_water_temperature"),
+            hot_water_temperature=_round_temp(
+                data.get("hot_water_temperature"), temp_scale
+            ),
+            current_water_temperature=_round_temp(
+                data.get("current_water_temperature"), temp_scale
+            ),
         )
 
     def _parse_tempsensor(
@@ -533,6 +560,18 @@ class NestParser:
                     is_active = True
                 break
 
+        temp_scale = TemperatureScale.CELSIUS
+        if associated_thermostat and associated_thermostat in raw_data:
+            val = (
+                raw_data[associated_thermostat]
+                .get("value", {})
+                .get("temperature_scale")
+                if "value" in raw_data[associated_thermostat]
+                else raw_data[associated_thermostat].get("temperature_scale")
+            )
+            if val == "F":
+                temp_scale = TemperatureScale.FAHRENHEIT
+
         return NestTempSensor(
             object_key=key,
             serial_number=value.get("serial_number", key.split(".")[1]),
@@ -541,7 +580,9 @@ class NestParser:
             model=value.get("model"),
             software_version=value.get("software_version"),
             online=(time.time() - value.get("last_updated_at", 0)) < 3600 * 4,
-            current_temperature=value.get("current_temperature"),
+            current_temperature=_round_temp(
+                value.get("current_temperature"), temp_scale
+            ),
             battery_level=value.get("battery_level", 0.0),
             associated_thermostat_object_key=associated_thermostat,
             is_active_sensor=is_active,
@@ -936,6 +977,130 @@ class NestParser:
             fan_max_speed,
         )
 
+    def _parse_proto_capabilities(
+        self, traits: dict[str, Any]
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool]:
+        """Extract HVAC capabilities from traits."""
+        capabilities_trait: nest_hvac_pb2.HvacEquipmentCapabilitiesTrait | None = (
+            traits.get(
+                nest_hvac_pb2.HvacEquipmentCapabilitiesTrait.DESCRIPTOR.full_name
+            )
+        )
+        can_heat = True
+        can_cool = True
+        has_dehumidifier = False
+        has_hot_water_control = False
+        has_hot_water_temperature = False
+        has_humidifier = False
+        has_air_filter = False
+
+        if capabilities_trait:
+            can_heat = (
+                capabilities_trait.hasStage1Heat
+                or capabilities_trait.hasStage2Heat
+                or capabilities_trait.hasStage3Heat
+            )
+            can_cool = (
+                capabilities_trait.hasStage1Cool
+                or capabilities_trait.hasStage2Cool
+                or capabilities_trait.hasStage3Cool
+            )
+            has_dehumidifier = capabilities_trait.hasDehumidifier
+            has_hot_water_control = capabilities_trait.hasHotWaterControl
+            has_hot_water_temperature = capabilities_trait.hasHotWaterTemperature
+            has_humidifier = capabilities_trait.hasHumidifier
+            has_air_filter = capabilities_trait.hasAirFilter
+
+        return (
+            can_heat,
+            can_cool,
+            has_dehumidifier,
+            has_hot_water_control,
+            has_hot_water_temperature,
+            has_humidifier,
+            has_air_filter,
+        )
+
+    def _parse_proto_hot_water(
+        self, traits: dict[str, Any], temp_scale: TemperatureScale | None
+    ) -> tuple[
+        bool,
+        int,
+        float | None,
+        float | None,
+        HotWaterMode,
+        bool,
+        str | None,
+        str | None,
+        str | None,
+    ]:
+        """Extract Hot Water and Heat Link properties from traits."""
+        hw_trait: nest_hvac_pb2.HotWaterTrait | None = traits.get(
+            nest_hvac_pb2.HotWaterTrait.DESCRIPTOR.full_name
+        )
+        hw_settings_trait: nest_hvac_pb2.HotWaterSettingsTrait | None = traits.get(
+            nest_hvac_pb2.HotWaterSettingsTrait.DESCRIPTOR.full_name
+        )
+
+        hot_water_active = False
+        hot_water_boost_time_to_end = 0
+        hot_water_temperature = None
+        current_water_temperature = None
+        hot_water_mode = HotWaterMode.OFF
+        hot_water_away_enabled = False
+
+        if hw_trait:
+            hot_water_active = hw_trait.boilerActive
+            if hw_trait.HasField("temperature"):
+                current_water_temperature = _round_temp(
+                    hw_trait.temperature.value, temp_scale
+                )
+
+        if hw_settings_trait:
+            if hw_settings_trait.HasField("boostTimerEnd"):
+                hot_water_boost_time_to_end = (
+                    hw_settings_trait.boostTimerEnd.ToSeconds()
+                )
+            if hw_settings_trait.HasField("temperature"):
+                hot_water_temperature = _round_temp(
+                    hw_settings_trait.temperature.value, temp_scale
+                )
+
+            if (
+                hw_settings_trait.mode
+                == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
+            ):
+                hot_water_mode = HotWaterMode.SCHEDULE
+
+            hot_water_away_enabled = hw_settings_trait.structureModeFollowEnabled
+
+        # Heat Link Info
+        heat_link_trait: nest_hvac_pb2.HeatLinkTrait | None = traits.get(
+            nest_hvac_pb2.HeatLinkTrait.DESCRIPTOR.full_name
+        )
+        heat_link_serial_number = None
+        heat_link_model = None
+        heat_link_sw_version = None
+        if heat_link_trait:
+            if heat_link_trait.HasField("heatLinkSerialNumber"):
+                heat_link_serial_number = heat_link_trait.heatLinkSerialNumber.value
+            if heat_link_trait.HasField("heatLinkModel"):
+                heat_link_model = heat_link_trait.heatLinkModel.value
+            if heat_link_trait.HasField("heatLinkSwVersion"):
+                heat_link_sw_version = heat_link_trait.heatLinkSwVersion.value
+
+        return (
+            hot_water_active,
+            hot_water_boost_time_to_end,
+            hot_water_temperature,
+            current_water_temperature,
+            hot_water_mode,
+            hot_water_away_enabled,
+            heat_link_serial_number,
+            heat_link_model,
+            heat_link_sw_version,
+        )
+
     def _parse_protobuf_thermostat_model(self, traits: dict[str, Any]) -> str:
         """Determine thermostat model from resource type."""
         resource_type = traits.get("_resource_type")
@@ -1010,6 +1175,21 @@ class NestParser:
         if not hvac_trait:
             return None
 
+        # Temperature Scale
+        display_trait: nest_hvac_pb2.DisplaySettingsTrait | None = traits.get(
+            nest_hvac_pb2.DisplaySettingsTrait.DESCRIPTOR.full_name
+        )
+        temp_scale = TemperatureScale.CELSIUS
+        if display_trait:
+            try:
+                if (
+                    display_trait.temperatureScale
+                    == nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
+                ):
+                    temp_scale = TemperatureScale.FAHRENHEIT
+            except AttributeError:
+                pass
+
         # Identity
         identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
             weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
@@ -1041,7 +1221,7 @@ class NestParser:
             "current_temperature"
         ) or traits.get(nest_sensor_pb2.TemperatureTrait.DESCRIPTOR.full_name)
         current_temperature = (
-            temp_trait.temperatureValue.temperature.value
+            _round_temp(temp_trait.temperatureValue.temperature.value, temp_scale)
             if temp_trait and temp_trait.HasField("temperatureValue")
             else None
         )
@@ -1052,42 +1232,24 @@ class NestParser:
             "backplate_temperature"
         )
         backplate_temperature = (
-            backplate_temp_trait.temperatureValue.temperature.value
+            _round_temp(
+                backplate_temp_trait.temperatureValue.temperature.value, temp_scale
+            )
             if backplate_temp_trait
             and backplate_temp_trait.HasField("temperatureValue")
             else None
         )
 
         # Capabilities (Equipment Capabilities)
-        capabilities_trait: nest_hvac_pb2.HvacEquipmentCapabilitiesTrait | None = (
-            traits.get(
-                nest_hvac_pb2.HvacEquipmentCapabilitiesTrait.DESCRIPTOR.full_name
-            )
-        )
-        can_heat = True
-        can_cool = True
-        has_dehumidifier = False
-        has_hot_water_control = False
-        has_hot_water_temperature = False
-        has_humidifier = False
-        has_air_filter = False
-
-        if capabilities_trait:
-            can_heat = (
-                capabilities_trait.hasStage1Heat
-                or capabilities_trait.hasStage2Heat
-                or capabilities_trait.hasStage3Heat
-            )
-            can_cool = (
-                capabilities_trait.hasStage1Cool
-                or capabilities_trait.hasStage2Cool
-                or capabilities_trait.hasStage3Cool
-            )
-            has_dehumidifier = capabilities_trait.hasDehumidifier
-            has_hot_water_control = capabilities_trait.hasHotWaterControl
-            has_hot_water_temperature = capabilities_trait.hasHotWaterTemperature
-            has_humidifier = capabilities_trait.hasHumidifier
-            has_air_filter = capabilities_trait.hasAirFilter
+        (
+            can_heat,
+            can_cool,
+            has_dehumidifier,
+            has_hot_water_control,
+            has_hot_water_temperature,
+            has_humidifier,
+            has_air_filter,
+        ) = self._parse_proto_capabilities(traits)
 
         # Eco Mode
         eco_trait: nest_hvac_pb2.EcoModeStateTrait | None = traits.get(
@@ -1107,6 +1269,10 @@ class NestParser:
             target_temperature_high,
             hvac_mode,
         ) = self._parse_proto_targets_and_mode(traits, is_eco_mode)
+
+        target_temperature = _round_temp(target_temperature, temp_scale)
+        target_temperature_low = _round_temp(target_temperature_low, temp_scale)
+        target_temperature_high = _round_temp(target_temperature_high, temp_scale)
 
         # Humidity
         humidity_trait: nest_sensor_pb2.HumidityTrait | None = traits.get(
@@ -1180,55 +1346,17 @@ class NestParser:
                 filter_runtime = filter_trait.filterRuntime.ToSeconds()
 
         # Hot Water / Heat Link Parsing
-        hw_trait: nest_hvac_pb2.HotWaterTrait | None = traits.get(
-            nest_hvac_pb2.HotWaterTrait.DESCRIPTOR.full_name
-        )
-        hw_settings_trait: nest_hvac_pb2.HotWaterSettingsTrait | None = traits.get(
-            nest_hvac_pb2.HotWaterSettingsTrait.DESCRIPTOR.full_name
-        )
-
-        hot_water_active = False
-        hot_water_boost_time_to_end = 0
-        hot_water_temperature = None
-        current_water_temperature = None
-        hot_water_mode = HotWaterMode.OFF
-        hot_water_away_enabled = False
-
-        if hw_trait:
-            hot_water_active = hw_trait.boilerActive
-            if hw_trait.HasField("temperature"):
-                current_water_temperature = hw_trait.temperature.value
-
-        if hw_settings_trait:
-            if hw_settings_trait.HasField("boostTimerEnd"):
-                hot_water_boost_time_to_end = (
-                    hw_settings_trait.boostTimerEnd.ToSeconds()
-                )
-            if hw_settings_trait.HasField("temperature"):
-                hot_water_temperature = hw_settings_trait.temperature.value
-
-            if (
-                hw_settings_trait.mode
-                == nest_hvac_pb2.HotWaterSettingsTrait.HotWaterMode.HOT_WATER_MODE_SCHEDULE
-            ):
-                hot_water_mode = HotWaterMode.SCHEDULE
-
-            hot_water_away_enabled = hw_settings_trait.structureModeFollowEnabled
-
-        # Heat Link Info
-        heat_link_trait: nest_hvac_pb2.HeatLinkTrait | None = traits.get(
-            nest_hvac_pb2.HeatLinkTrait.DESCRIPTOR.full_name
-        )
-        heat_link_serial_number = None
-        heat_link_model = None
-        heat_link_sw_version = None
-        if heat_link_trait:
-            if heat_link_trait.HasField("heatLinkSerialNumber"):
-                heat_link_serial_number = heat_link_trait.heatLinkSerialNumber.value
-            if heat_link_trait.HasField("heatLinkModel"):
-                heat_link_model = heat_link_trait.heatLinkModel.value
-            if heat_link_trait.HasField("heatLinkSwVersion"):
-                heat_link_sw_version = heat_link_trait.heatLinkSwVersion.value
+        (
+            hot_water_active,
+            hot_water_boost_time_to_end,
+            hot_water_temperature,
+            current_water_temperature,
+            hot_water_mode,
+            hot_water_away_enabled,
+            heat_link_serial_number,
+            heat_link_model,
+            heat_link_sw_version,
+        ) = self._parse_proto_hot_water(traits, temp_scale)
 
         # Battery
         batt_trait: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
@@ -1279,7 +1407,7 @@ class NestParser:
             fan_timer_speed=fan_timer_speed,
             fan_duration=fan_duration,
             fan_max_speed=fan_max_speed,
-            temperature_scale=TemperatureScale.CELSIUS,
+            temperature_scale=temp_scale,
             temperature_lock=temperature_lock,
             can_heat=can_heat,
             can_cool=can_cool,
@@ -1860,6 +1988,22 @@ class NestParser:
                     is_active = True
                 break
 
+        temp_scale = TemperatureScale.CELSIUS
+        if associated_thermostat and associated_thermostat in raw_data:
+            thermostat_traits = raw_data[associated_thermostat]
+            display_trait = thermostat_traits.get(
+                nest_hvac_pb2.DisplaySettingsTrait.DESCRIPTOR.full_name
+            )
+            if display_trait:
+                try:
+                    if (
+                        display_trait.temperatureScale
+                        == nest_hvac_pb2.DisplaySettingsTrait.TemperatureScale.TEMPERATURE_SCALE_F
+                    ):
+                        temp_scale = TemperatureScale.FAHRENHEIT
+                except AttributeError:
+                    pass
+
         # Identity
         identity_trait: weave_description_pb2.DeviceIdentityTrait | None = traits.get(
             weave_description_pb2.DeviceIdentityTrait.DESCRIPTOR.full_name
@@ -1930,7 +2074,9 @@ class NestParser:
             location=_get_protobuf_location(traits),
             model="Temperature Sensor",
             online=online,
-            current_temperature=temp_trait.temperatureValue.temperature.value,
+            current_temperature=_round_temp(
+                temp_trait.temperatureValue.temperature.value, temp_scale
+            ),
             battery_level=battery_level,
             is_protobuf=True,
             associated_thermostat_object_key=associated_thermostat,
