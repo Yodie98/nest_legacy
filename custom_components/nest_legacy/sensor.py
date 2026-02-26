@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
+    UnitOfElectricPotential,
     UnitOfTemperature,
     UnitOfTime,
 )
@@ -47,6 +48,24 @@ class NestSensorEntityDescription(SensorEntityDescription):
 
 
 _DESCRIPTIONS: tuple[NestSensorEntityDescription, ...] = (
+    NestSensorEntityDescription(
+        key="battery_voltage",
+        translation_key="battery_voltage",
+        value_fn=lambda device: device.battery_voltage,
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        suggested_display_precision=3,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        device_types=(
+            NestProtect,
+            NestTempSensor,
+            NestLock,
+            NestCamera,
+            NestThermostat,
+        ),
+    ),
     NestSensorEntityDescription(
         key="battery_level",
         translation_key="battery_level",

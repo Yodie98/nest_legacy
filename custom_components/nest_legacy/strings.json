@@ -162,6 +162,9 @@
       "battery_level": {
         "name": "Battery Level"
       },
+      "battery_voltage": {
+        "name": "Battery Voltage"
+      },
       "fan_duration_config": {
         "name": "Fan Duration Configuration"
       },

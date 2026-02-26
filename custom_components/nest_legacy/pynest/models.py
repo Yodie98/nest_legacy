@@ -32,6 +32,7 @@ class NestDevice:
     location: str | None = None
     mac_address: str | None = None
     is_protobuf: bool = False
+    battery_voltage: float | None = None
 
     @property
     def hardware_version(self) -> str | None:

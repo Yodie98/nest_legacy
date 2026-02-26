@@ -262,6 +262,9 @@ class NestParser:
             if replace_by_ts
             else None
         )
+        batt_mv = value.get("battery_level", 0)
+        battery_voltage = batt_mv / 1000.0 if batt_mv else None
+
         if value.get("wired_or_battery") == 0:
             return NestWiredProtect(
                 object_key=key,
@@ -275,7 +278,8 @@ class NestParser:
                 smoke_status=value.get("smoke_status", 0) != 0,
                 co_status=value.get("co_status", 0) != 0,
                 heat_status=value.get("heat_status", 0) != 0,
-                battery_level=_milli_volt_to_percentage(value.get("battery_level", 0)),
+                battery_level=_milli_volt_to_percentage(batt_mv),
+                battery_voltage=battery_voltage,
                 battery_health_state=value.get("battery_health_state", 0),
                 replace_by_date=replace_by_date,
                 occupancy=not value.get("auto_away", True),
@@ -321,7 +325,8 @@ class NestParser:
             smoke_status=value.get("smoke_status", 0) != 0,
             co_status=value.get("co_status", 0) != 0,
             heat_status=value.get("heat_status", 0) != 0,
-            battery_level=_milli_volt_to_percentage(value.get("battery_level", 0)),
+            battery_level=_milli_volt_to_percentage(batt_mv),
+            battery_voltage=battery_voltage,
             battery_health_state=value.get("battery_health_state", 0),
             replace_by_date=replace_by_date,
             night_light_enable=value.get("night_light_enable", False),
@@ -476,6 +481,8 @@ class NestParser:
             else 1
         )
 
+        batt_volts = data.get("battery_level")
+
         return NestThermostat(
             object_key=key,
             serial_number=value["serial_number"],
@@ -511,7 +518,10 @@ class NestParser:
             has_dehumidifier=data.get("has_dehumidifier", False),
             dehumidifier_state=data.get("dehumidifier_state", False),
             occupancy=occupancy,
-            battery_level=_scale_value(data.get("battery_level", 0), 3.6, 3.9, 0, 100),
+            battery_level=_scale_value(batt_volts, 3.6, 3.9, 0, 100)
+            if batt_volts is not None
+            else 0.0,
+            battery_voltage=batt_volts,
             has_hot_water_control=data.get("has_hot_water_control", False),
             has_hot_water_temperature=data.get("has_hot_water_temperature", False),
             heat_link_model=data.get("heat_link_model"),
@@ -584,6 +594,7 @@ class NestParser:
                 value.get("current_temperature"), temp_scale
             ),
             battery_level=value.get("battery_level", 0.0),
+            battery_voltage=None,  # REST API reports percentage, not voltage
             associated_thermostat_object_key=associated_thermostat,
             is_active_sensor=is_active,
         )
@@ -597,10 +608,11 @@ class NestParser:
         props = value.get("properties", {})
 
         battery_level = None
+        battery_voltage = None
         if "rq_battery_battery_volt" in props:
             try:
-                volts = float(props["rq_battery_battery_volt"])
-                battery_level = _scale_value(volts, 0.0, 5.4, 0.0, 100.0)
+                battery_voltage = float(props["rq_battery_battery_volt"])
+                battery_level = _scale_value(battery_voltage, 0.0, 5.4, 0.0, 100.0)
             except (ValueError, TypeError):
                 pass
 
@@ -629,6 +641,7 @@ class NestParser:
                 nexus_api_http_server_url=value.get("nexus_api_http_server_url"),
                 structure_id=value.get("structure_id"),
                 battery_level=battery_level,
+                battery_voltage=battery_voltage,
             )
         return NestCamera(
             object_key=key,
@@ -649,6 +662,7 @@ class NestParser:
             nexus_api_http_server_url=value.get("nexus_api_http_server_url"),
             structure_id=value.get("structure_id"),
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
         )
 
     def _parse_structure(
@@ -745,11 +759,15 @@ class NestParser:
         battery_trait: weave_power_pb2.BatteryPowerSourceTrait | None = traits.get(
             weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
         )
-        battery_level = (
-            100 * battery_trait.remaining.remainingPercent.value
-            if battery_trait
-            else 0.0
-        )
+        battery_level = 0.0
+        battery_voltage = None
+        if battery_trait:
+            if battery_trait.HasField("remaining") and battery_trait.remaining.HasField(
+                "remainingPercent"
+            ):
+                battery_level = 100 * battery_trait.remaining.remainingPercent.value
+            if battery_trait.HasField("assessedVoltage"):
+                battery_voltage = battery_trait.assessedVoltage.value
 
         tamper_trait: weave_security_pb2.TamperTrait | None = traits.get(
             weave_security_pb2.TamperTrait.DESCRIPTOR.full_name
@@ -786,6 +804,7 @@ class NestParser:
             bolt_state=bolt_state,
             bolt_actor=bolt_actor,
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
             tampered=tampered,
             auto_relock_on=settings_trait.autoRelockOn if settings_trait else False,
             auto_relock_duration=auto_relock_duration,
@@ -1363,12 +1382,13 @@ class NestParser:
             nest_sensor_pb2.BatteryVoltageTrait.DESCRIPTOR.full_name
         )
         battery_level = 0.0
+        battery_voltage = None
         if batt_trait and batt_trait.HasField("batteryValue"):
-            volts = batt_trait.batteryValue.batteryVoltage.value
+            battery_voltage = batt_trait.batteryValue.batteryVoltage.value
             if model == "Thermostat (2020)":
-                battery_level = _scale_value(volts, 2.9, 3.15, 0, 100)
+                battery_level = _scale_value(battery_voltage, 2.9, 3.15, 0, 100)
             else:
-                battery_level = _scale_value(volts, 3.6, 3.9, 0, 100)
+                battery_level = _scale_value(battery_voltage, 3.6, 3.9, 0, 100)
 
         # Occupancy
         occupancy = False
@@ -1436,10 +1456,13 @@ class NestParser:
             filter_replacement_needed=filter_replacement_needed,
             filter_runtime=filter_runtime,
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
             occupancy=occupancy,
         )
 
-    def _get_protect_battery(self, traits: dict[str, Any]) -> tuple[float, int]:
+    def _get_protect_battery(
+        self, traits: dict[str, Any]
+    ) -> tuple[float, int, float | None]:
         """Calculate battery level and health state."""
         batt_0: nest_sensor_pb2.BatteryVoltageTrait | None = traits.get(
             "battery_voltage_bank0"
@@ -1474,7 +1497,15 @@ class NestParser:
         ):
             battery_health_state = 1
 
-        return battery_level, battery_health_state
+        battery_voltage = None
+        if (
+            target_batt
+            and target_batt.HasField("batteryValue")
+            and target_batt.batteryValue.HasField("batteryVoltage")
+        ):
+            battery_voltage = target_batt.batteryValue.batteryVoltage.value
+
+        return battery_level, battery_health_state, battery_voltage
 
     def _get_protect_failures(
         self, key: str, traits: dict[str, Any], raw_data: dict[str, Any]
@@ -1603,7 +1634,9 @@ class NestParser:
             else True
         )
 
-        battery_level, battery_health_state = self._get_protect_battery(traits)
+        battery_level, battery_health_state, battery_voltage = (
+            self._get_protect_battery(traits)
+        )
 
         smoke_status = (
             safety_smoke.alarmState
@@ -1736,6 +1769,7 @@ class NestParser:
                 smoke_status=smoke_status,
                 co_status=co_status,
                 battery_level=battery_level,
+                battery_voltage=battery_voltage,
                 battery_health_state=battery_health_state,
                 line_power_present=True,
                 occupancy=occupancy,
@@ -1769,6 +1803,7 @@ class NestParser:
             smoke_status=smoke_status,
             co_status=co_status,
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
             battery_health_state=battery_health_state,
             night_light_enable=night_light_enable,
             steam_detection_enable=steam_detection_enable,
@@ -1878,15 +1913,18 @@ class NestParser:
             weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
         )
         battery_level = None
+        battery_voltage = None
         if battery_trait:
+            if battery_trait.HasField("assessedVoltage"):
+                battery_voltage = battery_trait.assessedVoltage.value
             if battery_trait.HasField("remaining") and battery_trait.remaining.HasField(
                 "remainingPercent"
             ):
                 battery_level = _scale_value(
                     battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
                 )
-            elif battery_trait.HasField("assessedVoltage"):
-                voltage_mv = int(battery_trait.assessedVoltage.value * 1000)
+            elif battery_voltage:
+                voltage_mv = int(battery_voltage * 1000)
                 battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
 
         # Check if it's a doorbell (has doorbell traits)
@@ -1917,6 +1955,7 @@ class NestParser:
                 indoor_chime_enabled=indoor_chime_enabled,
                 has_indoor_chime=has_indoor_chime,
                 battery_level=battery_level,
+                battery_voltage=battery_voltage,
                 is_protobuf=True,
             )
 
@@ -1935,6 +1974,7 @@ class NestParser:
             or "https://nexusapi.dropcam.com",
             web_url=f"https://home.nest.com/camera/{key}",
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
             is_protobuf=True,
         )
 
@@ -2039,16 +2079,16 @@ class NestParser:
         )
 
         battery_level = 0.0
+        battery_voltage = None
 
         if (
             batt_voltage_trait
             and batt_voltage_trait.HasField("batteryValue")
             and batt_voltage_trait.batteryValue.HasField("batteryVoltage")
         ):
+            battery_voltage = batt_voltage_trait.batteryValue.batteryVoltage.value
             # Convert V to mV
-            voltage_mv = int(
-                batt_voltage_trait.batteryValue.batteryVoltage.value * 1000
-            )
+            voltage_mv = int(battery_voltage * 1000)
             battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
         else:
             # Fallback to remainingPercent
@@ -2056,15 +2096,18 @@ class NestParser:
                 weave_power_pb2.BatteryPowerSourceTrait.DESCRIPTOR.full_name
             )
             if battery_trait:
+                if battery_trait.HasField("assessedVoltage"):
+                    battery_voltage = battery_trait.assessedVoltage.value
+
                 if battery_trait.HasField(
                     "remaining"
                 ) and battery_trait.remaining.HasField("remainingPercent"):
                     battery_level = _scale_value(
                         battery_trait.remaining.remainingPercent.value, 0, 1, 0, 100
                     )
-                elif battery_trait.HasField("assessedVoltage"):
+                elif battery_voltage:
                     # Convert V to mV
-                    voltage_mv = int(battery_trait.assessedVoltage.value * 1000)
+                    voltage_mv = int(battery_voltage * 1000)
                     battery_level = _scale_value(voltage_mv, 2000, 3000, 0, 100)
 
         return NestTempSensor(
@@ -2078,6 +2121,7 @@ class NestParser:
                 temp_trait.temperatureValue.temperature.value, temp_scale
             ),
             battery_level=battery_level,
+            battery_voltage=battery_voltage,
             is_protobuf=True,
             associated_thermostat_object_key=associated_thermostat,
             is_active_sensor=is_active,
