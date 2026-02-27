@@ -672,7 +672,7 @@ class NestClient:
 
             updates: dict[str, dict[str, Any]] = {}
             for bucket_data in result.get("objects", []):
-                bucket = Bucket(**bucket_data)
+                bucket = Bucket.from_dict(bucket_data)
                 # Verify we actually want this update (extra safety)
                 if not self._filter_buckets([bucket]):
                     continue
