@@ -295,7 +295,7 @@ class NestSession:
             ).replace(tzinfo=datetime.UTC)
             return expiry_date <= datetime.datetime.now(datetime.UTC)
         except (ValueError, AttributeError):
-            return True
+            return False
 
 
 @dataclass
