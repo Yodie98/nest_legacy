@@ -288,17 +288,17 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 self.config_entry.async_start_reauth(self.hass)
                 self.async_stop_subscriber()
                 return
+            except (TimeoutError, EmptyResponseException):
+                _LOGGER.debug("Subscriber connection timeout (expected). Reconnecting")
+                failures = 0
+                continue
             except Exception as err:
                 delay = min(
                     MAX_BACKOFF_SECONDS,
                     INITIAL_BACKOFF_SECONDS * (2**failures),
                 )
                 failures += 1
-                if isinstance(err, (TimeoutError, EmptyResponseException)):
-                    _LOGGER.debug(
-                        "Subscriber connection error: %r. Retrying in %ds", err, delay
-                    )
-                elif isinstance(err, (ClientError, PynestException)):
+                if isinstance(err, (ClientError, PynestException)):
                     _LOGGER.warning(
                         "Subscriber connection error: %r. Retrying in %ds", err, delay
                     )
