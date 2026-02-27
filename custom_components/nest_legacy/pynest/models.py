@@ -307,6 +307,12 @@ class Bucket:
     object_timestamp: int
     value: dict[str, Any]
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Bucket:
+        """Create an instance from a dict, ignoring unknown keys."""
+        known_fields = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known_fields})
+
 
 @dataclass
 class FirstDataAPIResponse:
@@ -322,7 +328,9 @@ class FirstDataAPIResponse:
         if "2fa_enabled" in data:
             data["_2fa_enabled"] = data.pop("2fa_enabled")
         return cls(
-            updated_buckets=[Bucket(**b) for b in data.get("updated_buckets", []) if b],
+            updated_buckets=[
+                Bucket.from_dict(b) for b in data.get("updated_buckets", []) if b
+            ],
             _2fa_enabled=data.get("_2fa_enabled"),
         )
 
@@ -354,6 +362,12 @@ class NestAuthClaims:
     policyId: str | None = None
     structureConstraint: str | None = None
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NestAuthClaims:
+        """Create an instance from a dict, ignoring unknown keys."""
+        known_fields = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known_fields})
+
 
 @dataclass
 class NestAuthResponse:
@@ -365,4 +379,4 @@ class NestAuthResponse:
     def __post_init__(self):
         """Handle nested dataclass."""
         if self.claims and isinstance(self.claims, dict):
-            self.claims = NestAuthClaims(**self.claims)
+            self.claims = NestAuthClaims.from_dict(self.claims)
