@@ -17,6 +17,10 @@ class NotAuthenticatedException(PynestException):
     """Raised when session is invalid."""
 
 
+class NonRetryablePynestException(PynestException):
+    """Raised when an operation fails with a non-retryable error."""
+
+
 class GatewayTimeoutException(NestServiceException):
     """Raised when server times out."""
 

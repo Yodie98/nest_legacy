@@ -28,6 +28,7 @@ from .exceptions import (
     BadGatewayException,
     EmptyResponseException,
     GatewayTimeoutException,
+    NonRetryablePynestException,
     NotAuthenticatedException,
     PynestException,
 )
@@ -70,6 +71,21 @@ from .protobuf_gen.weave.trait import (
     heartbeat_pb2 as weave_heartbeat_pb2,
     power_pb2 as weave_power_pb2,
     security_pb2 as weave_security_pb2,
+)
+
+_NON_RETRYABLE_CODES = frozenset(
+    {
+        3,  # INVALID_ARGUMENT: Client specified an invalid argument.
+        5,  # NOT_FOUND: Some requested entity was not found.
+        6,  # ALREADY_EXISTS: Entity that a client attempted to create already exists.
+        7,  # PERMISSION_DENIED: Caller does not have permission to execute the method.
+        9,  # FAILED_PRECONDITION: Operation rejected because the system is not in a required state.
+        11,  # OUT_OF_RANGE: Operation was attempted past the valid range.
+        12,  # UNIMPLEMENTED: Operation is not implemented or not supported/enabled.
+        15,  # DATA_LOSS: Unrecoverable data loss or corruption.
+        # Intentionally excluded to be able to raise NotAuthenticatedException
+        # 16,  # UNAUTHENTICATED: The request does not have valid authentication credentials for the operation
+    }
 )
 
 # Needed to get the "STRUCTURE_" key (see _parse_structure in parser.py)
@@ -1257,16 +1273,25 @@ class NestClient:
                 send_command_resp.ParseFromString(response_bytes)
                 _LOGGER.debug("SendCommand response: %s", send_command_resp)
                 if send_command_resp.status.code != 0:
-                    raise PynestException(
-                        f"Command failed with code {send_command_resp.status.code}: {send_command_resp.status.message}"
-                    )
+                    status_code = send_command_resp.status.code
+                    msg = f"Command failed with code {status_code}: {send_command_resp.status.message}"
+                    if status_code == 16:
+                        raise NotAuthenticatedException(msg)
+                    if status_code in _NON_RETRYABLE_CODES:
+                        raise NonRetryablePynestException(msg)
+                    raise PynestException(msg)
                 return send_command_resp
 
         for attempt in range(3):
             try:
                 return await _do_send()
             except (ClientError, TimeoutError, PynestException) as err:
-                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                if (
+                    isinstance(
+                        err, (NotAuthenticatedException, NonRetryablePynestException)
+                    )
+                    or attempt == 2
+                ):
                     raise
                 await asyncio.sleep(0.5 * (2**attempt))
 
@@ -1303,15 +1328,24 @@ class NestClient:
                 batch_update_resp.ParseFromString(response_bytes)
                 _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
                 if batch_update_resp.status.code != 0:
-                    raise PynestException(
-                        f"Command failed with code {batch_update_resp.status.code}: {batch_update_resp.status.message}"
-                    )
+                    status_code = batch_update_resp.status.code
+                    msg = f"Command failed with code {status_code}: {batch_update_resp.status.message}"
+                    if status_code == 16:
+                        raise NotAuthenticatedException(msg)
+                    if status_code in _NON_RETRYABLE_CODES:
+                        raise NonRetryablePynestException(msg)
+                    raise PynestException(msg)
 
         for attempt in range(3):
             try:
                 await _do_update()
             except (ClientError, TimeoutError, PynestException) as err:
-                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                if (
+                    isinstance(
+                        err, (NotAuthenticatedException, NonRetryablePynestException)
+                    )
+                    or attempt == 2
+                ):
                     raise
                 await asyncio.sleep(0.5 * (2**attempt))
             else:
