@@ -1206,6 +1206,7 @@ class NestClient:
                         ],
                         timeout=Duration(seconds=600),
                     )
+                    # triggers is a map so there is no IndexError
                     enhanced_pathlight_settings_trait.triggers[1].CopyFrom(t1)
 
                     # Wired Trigger (Darkness + Motion + Line Power)
@@ -1232,7 +1233,7 @@ class NestClient:
             req = v1_pb2.TraitUpdateStateRequest(
                 traitRequest=v1_pb2.TraitRequest(
                     resourceId=device.object_key,
-                    traitLabel="enhanced_pathlight_settings",
+                    traitLabel="pathlight_settings",
                     requestId=str(uuid.uuid4()),
                 ),
                 state=any_proto,
@@ -2357,6 +2358,13 @@ class NestClient:
 
             resource_id = state.traitId.resourceId
             trait_label = state.traitId.traitLabel
+
+            _LOGGER.debug(
+                "OBSERVE TRAIT MAPPING: resource_id=%s, type_url=%s, trait_label='%s'",
+                resource_id,
+                type_url,
+                trait_label,
+            )
 
             if trait_label.endswith("_bucketized"):
                 continue
