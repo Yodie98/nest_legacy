@@ -72,6 +72,9 @@ from .protobuf_gen.weave.trait import (
     security_pb2 as weave_security_pb2,
 )
 
+# Needed to get the "STRUCTURE_" key (see _parse_structure in parser.py)
+_OBSERVER_ALWAYS_INCLUDE_TRAITS = (nest_occupancy_pb2.StructureModeTrait,)
+
 # Lock-specific traits
 _OBSERVE_LOCK_TRAITS = (
     # Security (Locks)
@@ -198,7 +201,8 @@ _OBSERVE_STRUCTURE_TRAITS = (
 
 # All possible traits for parsing
 _ALL_POSSIBLE_TRAITS = (
-    _OBSERVE_PROTECT_TRAITS
+    _OBSERVER_ALWAYS_INCLUDE_TRAITS
+    + _OBSERVE_PROTECT_TRAITS
     + _OBSERVE_CAMERA_TRAITS
     + _OBSERVE_THERMOSTAT_TRAITS
     + _OBSERVE_LOCK_TRAITS
@@ -356,18 +360,19 @@ class NestClient:
         self._enable_protobuf_protect = enable_protobuf_protect
         self._enable_protobuf_camera = enable_protobuf_camera
 
-        # Build list of traits to observe based on flags
-        self._observe_traits: list[type[Message]] = []
+        # Build set of traits to observe based on flags
+        self._observe_traits: set[type[Message]] = set()
+        self._observe_traits.update(_OBSERVER_ALWAYS_INCLUDE_TRAITS)
         if enable_protobuf_protect:
-            self._observe_traits.extend(_OBSERVE_PROTECT_TRAITS)
+            self._observe_traits.update(_OBSERVE_PROTECT_TRAITS)
         if enable_protobuf_camera:
-            self._observe_traits.extend(_OBSERVE_CAMERA_TRAITS)
+            self._observe_traits.update(_OBSERVE_CAMERA_TRAITS)
         if enable_protobuf_thermostat:
-            self._observe_traits.extend(_OBSERVE_THERMOSTAT_TRAITS)
+            self._observe_traits.update(_OBSERVE_THERMOSTAT_TRAITS)
         if enable_protobuf_lock:
-            self._observe_traits.extend(_OBSERVE_LOCK_TRAITS)
+            self._observe_traits.update(_OBSERVE_LOCK_TRAITS)
         if enable_protobuf_structure:
-            self._observe_traits.extend(_OBSERVE_STRUCTURE_TRAITS)
+            self._observe_traits.update(_OBSERVE_STRUCTURE_TRAITS)
 
     async def async_authenticate_with_google_credentials(
         self, issue_token: str, cookies: str
