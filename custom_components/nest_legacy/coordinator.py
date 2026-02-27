@@ -95,27 +95,31 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self._processed_event_ids: deque[str] = deque(maxlen=100)
         self._last_event_poll_success_time: float | None = None
         self.first_protobuf_update_received = asyncio.Event()
+        self._auth_lock = asyncio.Lock()
 
     def get_raw_data_for_diagnostics(self) -> dict[str, Any]:
         """Return raw data, useful for diagnostics."""
         return self._raw_data
 
-    async def async_reauthenticate(self) -> None:
+    async def async_reauthenticate(self, force: bool = False) -> None:
         """(Re-)authenticate with the Nest API."""
-        data = self.config_entry.data
-        account_type = data.get(CONF_ACCOUNT_TYPE)
-        if account_type == "google":
-            await self.client.async_authenticate_with_google_credentials(
-                data[CONF_ISSUE_TOKEN], data[CONF_COOKIES]
-            )
-        elif account_type == "nest":
-            await self.client.async_authenticate_with_nest_token(
-                data[CONF_ACCESS_TOKEN]
-            )
-        else:
-            raise HomeAssistantError(
-                f"Unsupported account type in config entry: {account_type}"
-            )
+        async with self._auth_lock:
+            if not force and not self.client.is_expired():
+                return
+            data = self.config_entry.data
+            account_type = data.get(CONF_ACCOUNT_TYPE)
+            if account_type == "google":
+                await self.client.async_authenticate_with_google_credentials(
+                    data[CONF_ISSUE_TOKEN], data[CONF_COOKIES]
+                )
+            elif account_type == "nest":
+                await self.client.async_authenticate_with_nest_token(
+                    data[CONF_ACCESS_TOKEN]
+                )
+            else:
+                raise HomeAssistantError(
+                    f"Unsupported account type in config entry: {account_type}"
+                )
 
     async def async_initialize(self) -> None:
         """Initialize the connection and fetch initial data."""
@@ -230,7 +234,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             try:
                 if self.client.is_expired() or force_reauth:
                     _LOGGER.debug("Re-authenticating Nest session")
-                    await self.async_reauthenticate()
+                    await self.async_reauthenticate(force_reauth)
                     force_reauth = False  # Reset on success
 
                 updates = await self.client.async_subscribe_for_updates()
@@ -313,7 +317,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             try:
                 if self.client.is_expired() or force_reauth:
                     _LOGGER.debug("Re-authenticating Nest session for observe")
-                    await self.async_reauthenticate()
+                    await self.async_reauthenticate(force_reauth)
                     force_reauth = False  # Reset on success
 
                 async for updates in self.client.async_observe_for_updates():
