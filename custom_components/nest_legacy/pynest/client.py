@@ -2226,26 +2226,50 @@ class NestClient:
                     buffer.extend(chunk)
 
                     while True:
-                        if len(buffer) < 2:
-                            break
-                        message_length, varint_size = _decode_varint(buffer[1:])
-                        if message_length is None:
+                        if not buffer:
                             break
 
-                        frame_size = 1 + varint_size + message_length
-                        if len(buffer) < frame_size:
+                        tag, tag_size = _decode_varint(buffer)
+                        if tag is None:
                             break
 
-                        full_frame_data = buffer[:frame_size]
-                        buffer = buffer[frame_size:]
+                        wire_type = tag & 0x07
+                        if wire_type == 2:
+                            message_length, varint_size = _decode_varint(
+                                buffer[tag_size:]
+                            )
+                            if message_length is None:
+                                break
 
-                        outer_response = v2_pb2.ObserveResponse()
-                        outer_response.ParseFromString(full_frame_data)
+                            frame_size = tag_size + varint_size + message_length
+                            if len(buffer) < frame_size:
+                                break
 
-                        for inner_response in outer_response.observeResponse:
-                            updates = self._parse_observe_response(inner_response)
-                            if updates:
-                                yield updates
+                            full_frame_data = buffer[:frame_size]
+                            buffer = buffer[frame_size:]
+
+                            if tag >> 3 == 1:  # Field 1: observeResponse
+                                outer_response = v2_pb2.ObserveResponse()
+                                outer_response.ParseFromString(full_frame_data)
+
+                                for inner_response in outer_response.observeResponse:
+                                    updates = self._parse_observe_response(
+                                        inner_response
+                                    )
+                                    if updates:
+                                        yield updates
+                            else:
+                                _LOGGER.debug(
+                                    "Skipping unknown field tag %s in observe stream",
+                                    tag >> 3,
+                                )
+                        else:
+                            _LOGGER.debug(
+                                "Unexpected wire type %s in observe stream, resetting buffer",
+                                wire_type,
+                            )
+                            buffer.clear()
+                            break
 
         except TimeoutError:
             _LOGGER.debug("Stream connection timed out due to inactivity")
