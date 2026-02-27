@@ -2273,7 +2273,14 @@ class NestClient:
 
         except TimeoutError:
             _LOGGER.debug("Stream connection timed out due to inactivity")
-        except (ClientError, OSError) as err:
+        except ClientError as err:
+            if hasattr(err, "status") and err.status in (401, 403):
+                raise NotAuthenticatedException(
+                    f"Observer auth failed: {err.status}"
+                ) from err
+            _LOGGER.debug("Observe stream connection error: %s", err)
+            raise PynestException(f"Observe stream failed: {err}") from err
+        except OSError as err:
             _LOGGER.debug("Observe stream connection error: %s", err)
             raise PynestException(f"Observe stream failed: {err}") from err
         except Exception as err:
