@@ -1964,6 +1964,10 @@ class NestClient:
         format: str = "mp4",
     ) -> bytes | None:
         """Get a historical clip from a camera event."""
+        if device.is_protobuf:
+            # Historical MP4 clips are not available over simple REST GET for Protobuf cameras
+            return None
+
         if not device.nexus_api_http_server_url:
             _LOGGER.error(
                 "Cannot get event clip for %s, nexus_api_http_server_url is missing",
