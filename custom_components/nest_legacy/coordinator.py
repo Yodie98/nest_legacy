@@ -92,7 +92,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self._observe_task: asyncio.Task | None = None
         self._poll_task: asyncio.Task | None = None
         self._raw_data: dict[str, Any] = {}
-        self._processed_event_ids: deque[str] = deque(maxlen=100)
+        self._processed_event_ids: deque[str] = deque(maxlen=1000)
         self._last_event_poll_success_time: float | None = None
         self.first_protobuf_update_received = asyncio.Event()
         self._auth_lock = asyncio.Lock()
