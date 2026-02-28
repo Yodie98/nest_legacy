@@ -725,6 +725,12 @@ class NestClient:
                         f"Authentication failed: {response.status}"
                     )
                 if not response.ok:
+                    if 400 <= response.status < 500 and response.status not in (
+                        401,
+                        403,
+                        429,
+                    ):
+                        raise PynestException(f"BAD_REQUEST: {await response.text()}")
                     raise PynestException(
                         f"Error updating objects: {await response.text()}"
                     )
@@ -733,7 +739,11 @@ class NestClient:
             try:
                 await _do_post()
             except (ClientError, TimeoutError, PynestException) as err:
-                if isinstance(err, NotAuthenticatedException) or attempt == 2:
+                if (
+                    isinstance(err, NotAuthenticatedException)
+                    or "BAD_REQUEST:" in str(err)
+                    or attempt == 2
+                ):
                     raise
                 await asyncio.sleep(0.5 * (2**attempt))
             else:
