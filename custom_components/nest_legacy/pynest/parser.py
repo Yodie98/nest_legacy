@@ -821,6 +821,19 @@ class NestParser:
         target_high = None
         hvac_mode = ThermostatHvacMode.OFF
 
+        target_temp_trait: nest_hvac_pb2.TargetTemperatureSettingsTrait | None = (
+            traits.get(
+                nest_hvac_pb2.TargetTemperatureSettingsTrait.DESCRIPTOR.full_name
+            )
+        )
+
+        if (
+            target_temp_trait
+            and target_temp_trait.HasField("enabled")
+            and not target_temp_trait.enabled.value
+        ):
+            return None, None, None, ThermostatHvacMode.OFF
+
         # Handle Eco Mode Settings to get actual target temps when in Eco
         if is_eco_mode:
             eco_settings: nest_hvac_pb2.EcoModeSettingsTrait | None = traits.get(
@@ -849,11 +862,6 @@ class NestParser:
             return target_temp, target_low, target_high, hvac_mode
 
         # Standard Target Temperature
-        target_temp_trait: nest_hvac_pb2.TargetTemperatureSettingsTrait | None = (
-            traits.get(
-                nest_hvac_pb2.TargetTemperatureSettingsTrait.DESCRIPTOR.full_name
-            )
-        )
         if target_temp_trait and target_temp_trait.HasField("targetTemperature"):
             tt = target_temp_trait.targetTemperature
             if (
@@ -877,13 +885,6 @@ class NestParser:
                 # Calculate middle point for 'target' if needed
                 target_temp = (target_low + target_high) / 2
                 hvac_mode = ThermostatHvacMode.RANGE
-
-        if (
-            target_temp_trait
-            and target_temp_trait.HasField("enabled")
-            and not target_temp_trait.enabled.value
-        ):
-            hvac_mode = ThermostatHvacMode.OFF
 
         return target_temp, target_low, target_high, hvac_mode
 
