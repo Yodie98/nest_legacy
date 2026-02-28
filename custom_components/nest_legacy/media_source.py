@@ -179,7 +179,7 @@ class NestMediaSource(MediaSource):
     ) -> BrowseMediaSource:
         """Return media browser."""
         if not item.identifier:
-            entries = self.hass.config_entries.async_entries(DOMAIN)
+            entries = self.hass.config_entries.async_loaded_entries(DOMAIN)
             if len(entries) == 1:
                 return await self._browse_cameras(entries[0])
             return self._browse_root(entries)
