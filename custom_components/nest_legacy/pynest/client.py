@@ -317,7 +317,7 @@ _LOGGER = logging.getLogger(__package__)
 
 
 # The _decode_varint helper function is required to find frame boundaries.
-def _decode_varint(buffer: bytes) -> tuple[int | None, int]:
+def _decode_varint(buffer: bytes | bytearray) -> tuple[int | None, int]:
     """Decodes a varint from the start of a buffer and returns the value and bytes read."""
     shift = 0
     result = 0
@@ -1399,62 +1399,51 @@ class NestClient:
             )
             await self._async_update_trait_state(request)
 
-    async def _set_proto_thermostat_target_settings(
+    def _update_eco_mode_settings(
         self,
-        device: NestThermostat,
         data: dict[str, Any],
-        now: Timestamp,
-        current_traits: dict[str, Any] | None = None,
-        is_eco: bool | None = None,
-    ) -> None:
-        """Handle combined temperature and HVAC mode updates for protobuf thermostat."""
-        if is_eco is None:
-            is_eco = device.is_eco_mode
-
-        eco_mode_active = (
-            device.hvac_mode
-            in (ThermostatHvacMode.OFF, "eco", "ecoheat", "ecocool", "ecorange")
-            or is_eco
-        )
-
-        update_eco = False
-        update_target = False
-
-        if eco_mode_active and (
+        eco_mode_settings_trait: Any,
+    ) -> bool:
+        """Update Eco mode trait values from data."""
+        if not (
             "target_temperature" in data
             or "target_temperature_low" in data
             or "target_temperature_high" in data
         ):
-            update_eco = True
-            eco_mode_settings_trait = _get_trait_copy(
-                current_traits, nest_hvac_pb2.EcoModeSettingsTrait
-            )
-            target_val = data.get("target_temperature")
-            if target_val is not None:
-                if eco_mode_settings_trait.ecoTemperatureHeat.enabled:
-                    eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
-                if eco_mode_settings_trait.ecoTemperatureCool.enabled:
-                    eco_mode_settings_trait.ecoTemperatureCool.value.value = target_val
+            return False
 
-            if (
-                "target_temperature_low" in data
-                and eco_mode_settings_trait.ecoTemperatureHeat.enabled
-            ):
-                eco_mode_settings_trait.ecoTemperatureHeat.value.value = data[
-                    "target_temperature_low"
-                ]
-            if (
-                "target_temperature_high" in data
-                and eco_mode_settings_trait.ecoTemperatureCool.enabled
-            ):
-                eco_mode_settings_trait.ecoTemperatureCool.value.value = data[
-                    "target_temperature_high"
-                ]
+        target_val = data.get("target_temperature")
+        if target_val is not None:
+            if eco_mode_settings_trait.ecoTemperatureHeat.enabled:
+                eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
+            if eco_mode_settings_trait.ecoTemperatureCool.enabled:
+                eco_mode_settings_trait.ecoTemperatureCool.value.value = target_val
 
-        # Fetch TargetTemperature trait once to avoid overwriting changes
-        target_temperature_settings_trait = _get_trait_copy(
-            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
-        )
+        if (
+            "target_temperature_low" in data
+            and eco_mode_settings_trait.ecoTemperatureHeat.enabled
+        ):
+            eco_mode_settings_trait.ecoTemperatureHeat.value.value = data[
+                "target_temperature_low"
+            ]
+        if (
+            "target_temperature_high" in data
+            and eco_mode_settings_trait.ecoTemperatureCool.enabled
+        ):
+            eco_mode_settings_trait.ecoTemperatureCool.value.value = data[
+                "target_temperature_high"
+            ]
+        return True
+
+    def _update_target_temperature_settings(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        target_temperature_settings_trait: Any,
+        eco_mode_active: bool,
+    ) -> bool:
+        """Update Target Temperature trait values from data."""
+        update_target = False
 
         if "hvac_mode" in data:
             update_target = True
@@ -1475,78 +1464,123 @@ class NestClient:
             or "target_temperature_high" in data
         ):
             update_target = True
-            heating_target = 20.0
-            cooling_target = 25.0
-            if target_temperature_settings_trait.HasField("targetTemperature"):
-                if target_temperature_settings_trait.targetTemperature.HasField(
-                    "heatingTarget"
-                ):
-                    heating_target = target_temperature_settings_trait.targetTemperature.heatingTarget.value
-                if target_temperature_settings_trait.targetTemperature.HasField(
-                    "coolingTarget"
-                ):
-                    cooling_target = target_temperature_settings_trait.targetTemperature.coolingTarget.value
-            else:
-                if device.target_temperature_low is not None:
-                    heating_target = device.target_temperature_low
-                elif (
-                    device.hvac_mode == ThermostatHvacMode.HEAT
-                    and device.target_temperature is not None
-                ):
-                    heating_target = device.target_temperature
-
-                if device.target_temperature_high is not None:
-                    cooling_target = device.target_temperature_high
-                elif (
-                    device.hvac_mode == ThermostatHvacMode.COOL
-                    and device.target_temperature is not None
-                ):
-                    cooling_target = device.target_temperature
-
-            temp_val = data.get("target_temperature")
-
-            # Derive setpointType safely, pulling from device fallback if cache is cold
-            if "hvac_mode" in data:
-                setpoint_type = (
-                    target_temperature_settings_trait.targetTemperature.setpointType
-                )
-            else:
-                setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-                if device.hvac_mode == ThermostatHvacMode.COOL:
-                    setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-                elif device.hvac_mode == ThermostatHvacMode.RANGE:
-                    setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
-                target_temperature_settings_trait.targetTemperature.setpointType = (
-                    setpoint_type
-                )
-
-            if (
-                setpoint_type
-                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-                and temp_val is not None
-            ):
-                heating_target = temp_val
-            elif (
-                setpoint_type
-                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-                and temp_val is not None
-            ):
-                cooling_target = temp_val
-            elif (
-                setpoint_type
-                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
-            ):
-                if "target_temperature_low" in data:
-                    heating_target = data["target_temperature_low"]
-                if "target_temperature_high" in data:
-                    cooling_target = data["target_temperature_high"]
-
-            target_temperature_settings_trait.targetTemperature.heatingTarget.value = (
-                heating_target
+            self._apply_target_temperature_to_trait(
+                device, data, target_temperature_settings_trait
             )
-            target_temperature_settings_trait.targetTemperature.coolingTarget.value = (
-                cooling_target
+
+        return update_target
+
+    def _apply_target_temperature_to_trait(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        target_temperature_settings_trait: Any,
+    ) -> None:
+        """Calculate and apply heating and cooling targets."""
+        heating_target = 20.0
+        cooling_target = 25.0
+        if target_temperature_settings_trait.HasField("targetTemperature"):
+            if target_temperature_settings_trait.targetTemperature.HasField(
+                "heatingTarget"
+            ):
+                heating_target = target_temperature_settings_trait.targetTemperature.heatingTarget.value
+            if target_temperature_settings_trait.targetTemperature.HasField(
+                "coolingTarget"
+            ):
+                cooling_target = target_temperature_settings_trait.targetTemperature.coolingTarget.value
+        else:
+            if device.target_temperature_low is not None:
+                heating_target = device.target_temperature_low
+            elif (
+                device.hvac_mode == ThermostatHvacMode.HEAT
+                and device.target_temperature is not None
+            ):
+                heating_target = device.target_temperature
+
+            if device.target_temperature_high is not None:
+                cooling_target = device.target_temperature_high
+            elif (
+                device.hvac_mode == ThermostatHvacMode.COOL
+                and device.target_temperature is not None
+            ):
+                cooling_target = device.target_temperature
+
+        temp_val = data.get("target_temperature")
+
+        # Derive setpointType safely, pulling from device fallback if cache is cold
+        if "hvac_mode" in data:
+            setpoint_type = (
+                target_temperature_settings_trait.targetTemperature.setpointType
             )
+        else:
+            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+            if device.hvac_mode == ThermostatHvacMode.COOL:
+                setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+            elif device.hvac_mode == ThermostatHvacMode.RANGE:
+                setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+            target_temperature_settings_trait.targetTemperature.setpointType = (
+                setpoint_type
+            )
+
+        if (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+            and temp_val is not None
+        ):
+            heating_target = temp_val
+        elif (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+            and temp_val is not None
+        ):
+            cooling_target = temp_val
+        elif (
+            setpoint_type
+            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+        ):
+            if "target_temperature_low" in data:
+                heating_target = data["target_temperature_low"]
+            if "target_temperature_high" in data:
+                cooling_target = data["target_temperature_high"]
+
+        target_temperature_settings_trait.targetTemperature.heatingTarget.value = (
+            heating_target
+        )
+        target_temperature_settings_trait.targetTemperature.coolingTarget.value = (
+            cooling_target
+        )
+
+    async def _set_proto_thermostat_target_settings(
+        self,
+        device: NestThermostat,
+        data: dict[str, Any],
+        now: Timestamp,
+        current_traits: dict[str, Any] | None = None,
+        is_eco: bool | None = None,
+    ) -> None:
+        """Handle combined temperature and HVAC mode updates for protobuf thermostat."""
+        if is_eco is None:
+            is_eco = device.is_eco_mode
+
+        eco_mode_active = (
+            device.hvac_mode
+            in (ThermostatHvacMode.OFF, "eco", "ecoheat", "ecocool", "ecorange")
+            or is_eco
+        )
+
+        update_eco = False
+        eco_mode_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.EcoModeSettingsTrait
+        )
+        if eco_mode_active:
+            update_eco = self._update_eco_mode_settings(data, eco_mode_settings_trait)
+
+        target_temperature_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
+        )
+        update_target = self._update_target_temperature_settings(
+            device, data, target_temperature_settings_trait, eco_mode_active
+        )
 
         # Execute updates sequentially (but properly combined traits)
         if update_eco:
@@ -1999,6 +2033,53 @@ class NestClient:
             device, event_id, height=92, format="jpeg"
         )
 
+    def _parse_protobuf_camera_event(
+        self, cam_event: Any, EventTypeEnum: Any, events: list[dict[str, Any]]
+    ) -> None:
+        """Parse a single protobuf camera event."""
+        event_types = []
+        for t in cam_event.eventType:
+            try:
+                t_str = EventTypeEnum.Name(t)
+                # Map Protobuf enums to legacy API string formats
+                if t_str == "EVENT_UNFAMILIAR_FACE":
+                    event_types.append("unfamiliar-face")
+                elif t_str == "EVENT_PERSON_TALKING":
+                    event_types.append("personHeard")
+                elif t_str == "EVENT_DOG_BARKING":
+                    event_types.append("dogBarking")
+                elif t_str.startswith("EVENT_"):
+                    event_types.append(t_str[6:].lower())
+                else:
+                    event_types.append(t_str.lower())
+            except ValueError:
+                continue
+
+        if not event_types:
+            return
+
+        # Convert Timestamp to float seconds
+        start_t = cam_event.startTime.seconds + (cam_event.startTime.nanos / 1e9)
+        end_t = cam_event.endTime.seconds + (cam_event.endTime.nanos / 1e9)
+
+        # Map zone indices
+        zone_ids = [
+            z.zoneIndex for z in cam_event.activityZone if z.zoneIndex is not None
+        ]
+        # If generic motion without specific zone, default to zone 1
+        if not zone_ids:
+            zone_ids = [1]
+
+        events.append(
+            {
+                "id": cam_event.eventId,
+                "start_time": start_t,
+                "end_time": end_t,
+                "types": event_types,
+                "zone_ids": zone_ids,
+            }
+        )
+
     async def _async_get_protobuf_camera_events(
         self,
         device: NestCamera,
@@ -2061,52 +2142,7 @@ class NestClient:
 
                 # Iterate through events in the time window
                 for cam_event in history_response.cameraEventWindow.cameraEvent:
-                    event_types = []
-                    for t in cam_event.eventType:
-                        try:
-                            t_str = EventTypeEnum.Name(t)
-                            # Map Protobuf enums to legacy API string formats
-                            if t_str == "EVENT_UNFAMILIAR_FACE":
-                                event_types.append("unfamiliar-face")
-                            elif t_str == "EVENT_PERSON_TALKING":
-                                event_types.append("personHeard")
-                            elif t_str == "EVENT_DOG_BARKING":
-                                event_types.append("dogBarking")
-                            elif t_str.startswith("EVENT_"):
-                                event_types.append(t_str[6:].lower())
-                            else:
-                                event_types.append(t_str.lower())
-                        except ValueError:
-                            continue
-
-                    if not event_types:
-                        continue
-
-                    # Convert Timestamp to float seconds
-                    start_t = cam_event.startTime.seconds + (
-                        cam_event.startTime.nanos / 1e9
-                    )
-                    end_t = cam_event.endTime.seconds + (cam_event.endTime.nanos / 1e9)
-
-                    # Map zone indices
-                    zone_ids = [
-                        z.zoneIndex
-                        for z in cam_event.activityZone
-                        if z.zoneIndex is not None
-                    ]
-                    # If generic motion without specific zone, default to zone 1
-                    if not zone_ids:
-                        zone_ids = [1]
-
-                    events.append(
-                        {
-                            "id": cam_event.eventId,
-                            "start_time": start_t,
-                            "end_time": end_t,
-                            "types": event_types,
-                            "zone_ids": zone_ids,
-                        }
-                    )
+                    self._parse_protobuf_camera_event(cam_event, EventTypeEnum, events)
 
         # Sort by start_time descending to match legacy API behavior
         events.sort(key=lambda x: x["start_time"], reverse=True)
@@ -2195,6 +2231,50 @@ class NestClient:
             except (KeyError, IndexError):
                 return {}
 
+    def _parse_observe_buffer(self, buffer: bytearray):
+        """Parse the observe buffer to extract responses."""
+        while True:
+            if not buffer:
+                break
+
+            tag, tag_size = _decode_varint(buffer)
+            if tag is None:
+                break
+
+            wire_type = tag & 0x07
+            if wire_type != 2:
+                _LOGGER.debug(
+                    "Unexpected wire type %s in observe stream, resetting buffer",
+                    wire_type,
+                )
+                buffer.clear()
+                break
+
+            message_length, varint_size = _decode_varint(buffer[tag_size:])
+            if message_length is None:
+                break
+
+            frame_size = tag_size + varint_size + message_length
+            if len(buffer) < frame_size:
+                break
+
+            full_frame_data = buffer[:frame_size]
+            del buffer[:frame_size]
+
+            if tag >> 3 == 1:  # Field 1: observeResponse
+                outer_response = v2_pb2.ObserveResponse()
+                outer_response.ParseFromString(bytes(full_frame_data))
+
+                for inner_response in outer_response.observeResponse:
+                    updates = self._parse_observe_response(inner_response)
+                    if updates:
+                        yield updates
+            else:
+                _LOGGER.debug(
+                    "Skipping unknown field tag %s in observe stream",
+                    tag >> 3,
+                )
+
     async def async_observe_for_updates(self):
         """Listen for protobuf data updates."""
         url = f"https://{self._environment.grpc_host}{_OBSERVE_ENDPOINT}"
@@ -2226,51 +2306,8 @@ class NestClient:
                         break
                     buffer.extend(chunk)
 
-                    while True:
-                        if not buffer:
-                            break
-
-                        tag, tag_size = _decode_varint(buffer)
-                        if tag is None:
-                            break
-
-                        wire_type = tag & 0x07
-                        if wire_type == 2:
-                            message_length, varint_size = _decode_varint(
-                                buffer[tag_size:]
-                            )
-                            if message_length is None:
-                                break
-
-                            frame_size = tag_size + varint_size + message_length
-                            if len(buffer) < frame_size:
-                                break
-
-                            full_frame_data = buffer[:frame_size]
-                            buffer = buffer[frame_size:]
-
-                            if tag >> 3 == 1:  # Field 1: observeResponse
-                                outer_response = v2_pb2.ObserveResponse()
-                                outer_response.ParseFromString(full_frame_data)
-
-                                for inner_response in outer_response.observeResponse:
-                                    updates = self._parse_observe_response(
-                                        inner_response
-                                    )
-                                    if updates:
-                                        yield updates
-                            else:
-                                _LOGGER.debug(
-                                    "Skipping unknown field tag %s in observe stream",
-                                    tag >> 3,
-                                )
-                        else:
-                            _LOGGER.debug(
-                                "Unexpected wire type %s in observe stream, resetting buffer",
-                                wire_type,
-                            )
-                            buffer.clear()
-                            break
+                    for updates in self._parse_observe_buffer(buffer):
+                        yield updates
 
         except TimeoutError:
             _LOGGER.debug("Stream connection timed out due to inactivity")
