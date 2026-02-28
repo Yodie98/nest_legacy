@@ -412,6 +412,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
             poll_interval = self.config_entry.options.get(
                 CONF_EVENT_POLL_INTERVAL, DEFAULT_EVENT_POLL_INTERVAL
             )
+            loop_start = time.time()
 
             try:
                 # Determine the start time for the event query
@@ -460,7 +461,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 await asyncio.sleep(delay)
                 continue
 
-            await asyncio.sleep(poll_interval)
+            # Calculate remaining sleep time to eliminate drift
+            elapsed = time.time() - loop_start
+            sleep_time = max(0.0, poll_interval - elapsed)
+            await asyncio.sleep(sleep_time)
 
     async def _async_process_events_for_device(
         self, device: NestCamera, start_time: float, poll_interval: float
