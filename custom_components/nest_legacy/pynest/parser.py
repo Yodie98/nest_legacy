@@ -288,21 +288,21 @@ class NestParser:
                 steam_detection_enable=value.get("steam_detection_enable", False),
                 night_light_brightness=value.get("night_light_brightness"),
                 component_speaker_test_passed=value.get(
-                    "component_speaker_test_passed", False
+                    "component_speaker_test_passed", True
                 ),
                 component_smoke_test_passed=value.get(
-                    "component_smoke_test_passed", False
+                    "component_smoke_test_passed", True
                 ),
-                component_co_test_passed=value.get("component_co_test_passed", False),
+                component_co_test_passed=value.get("component_co_test_passed", True),
                 component_wifi_test_passed=value.get(
-                    "component_wifi_test_passed", False
+                    "component_wifi_test_passed", True
                 ),
-                component_led_test_passed=value.get("component_led_test_passed", False),
-                component_pir_test_passed=value.get("component_pir_test_passed", False),
+                component_led_test_passed=value.get("component_led_test_passed", True),
+                component_pir_test_passed=value.get("component_pir_test_passed", True),
                 component_buzzer_test_passed=value.get(
-                    "component_buzzer_test_passed", False
+                    "component_buzzer_test_passed", True
                 ),
-                component_hum_test_passed=value.get("component_hum_test_passed", False),
+                component_hum_test_passed=value.get("component_hum_test_passed", True),
                 removed_from_base=value.get("removed_from_base", False),
                 latest_manual_test_end_utc_secs=value.get(
                     "latest_manual_test_end_utc_secs", 0
@@ -333,17 +333,17 @@ class NestParser:
             steam_detection_enable=value.get("steam_detection_enable", False),
             night_light_brightness=value.get("night_light_brightness"),
             component_speaker_test_passed=value.get(
-                "component_speaker_test_passed", False
+                "component_speaker_test_passed", True
             ),
-            component_smoke_test_passed=value.get("component_smoke_test_passed", False),
-            component_co_test_passed=value.get("component_co_test_passed", False),
-            component_wifi_test_passed=value.get("component_wifi_test_passed", False),
-            component_led_test_passed=value.get("component_led_test_passed", False),
-            component_pir_test_passed=value.get("component_pir_test_passed", False),
+            component_smoke_test_passed=value.get("component_smoke_test_passed", True),
+            component_co_test_passed=value.get("component_co_test_passed", True),
+            component_wifi_test_passed=value.get("component_wifi_test_passed", True),
+            component_led_test_passed=value.get("component_led_test_passed", True),
+            component_pir_test_passed=value.get("component_pir_test_passed", True),
             component_buzzer_test_passed=value.get(
-                "component_buzzer_test_passed", False
+                "component_buzzer_test_passed", True
             ),
-            component_hum_test_passed=value.get("component_hum_test_passed", False),
+            component_hum_test_passed=value.get("component_hum_test_passed", True),
             removed_from_base=value.get("removed_from_base", False),
             latest_manual_test_end_utc_secs=value.get(
                 "latest_manual_test_end_utc_secs", 0
