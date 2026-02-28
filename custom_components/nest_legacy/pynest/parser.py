@@ -605,6 +605,12 @@ class NestParser:
             is_active_sensor=is_active,
         )
 
+    def _parse_bool(self, val: Any) -> bool:
+        """Parse literal string booleans from older APIs safely."""
+        if isinstance(val, str):
+            return val.lower() == "true"
+        return bool(val)
+
     def _parse_camera(
         self, key: str, value: dict[str, Any], wheres_map: dict[str, str]
     ) -> NestCamera | None:
@@ -642,7 +648,7 @@ class NestParser:
                 ),
                 irled_enabled=props.get("irled.state") != "always_off",
                 status_led_enabled=props.get("statusled.brightness", 1) != 1,
-                video_flipped=props.get("video.flipped", False),
+                video_flipped=self._parse_bool(props.get("video.flipped", False)),
                 web_url=value.get("web_url"),
                 nexus_api_http_server_url=value.get("nexus_api_http_server_url"),
                 structure_id=value.get("structure_id"),
