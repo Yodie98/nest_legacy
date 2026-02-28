@@ -155,24 +155,37 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self, device: NestDevice, data: dict[str, Any]
     ) -> None:
         """Set device data and handle exceptions."""
+        # For Protobuf devices, we need to pass the current raw traits to the client
+        # to ensure we don't overwrite existing fields with defaults.
+        current_traits = None
+        if device.is_protobuf:
+            resource_id = device.object_key
+            # HeatLinks and Temp Sensors are controlled via their associated thermostat resource
+            if (
+                isinstance(device, (NestHeatLink, NestTempSensor))
+                and device.associated_thermostat_object_key
+            ):
+                resource_id = device.associated_thermostat_object_key
+
+            current_traits = self._raw_data.get(resource_id)
+
         try:
-            # For Protobuf devices, we need to pass the current raw traits to the client
-            # to ensure we don't overwrite existing fields with defaults.
-            current_traits = None
-            if device.is_protobuf:
-                resource_id = device.object_key
-                # HeatLinks and Temp Sensors are controlled via their associated thermostat resource
-                if (
-                    isinstance(device, (NestHeatLink, NestTempSensor))
-                    and device.associated_thermostat_object_key
-                ):
-                    resource_id = device.associated_thermostat_object_key
-
-                current_traits = self._raw_data.get(resource_id)
-
             await self.client.async_set_device_data(
                 device, data, current_traits=current_traits
             )
+        except NotAuthenticatedException:
+            _LOGGER.debug(
+                "Token expired during command. Re-authenticating and retrying"
+            )
+            try:
+                await self.async_reauthenticate(force=True)
+                await self.client.async_set_device_data(
+                    device, data, current_traits=current_traits
+                )
+            except Exception as err:
+                raise HomeAssistantError(
+                    "Retry failed after re-authentication"
+                ) from err
         except (ClientError, TimeoutError, PynestException) as err:
             _LOGGER.error(
                 "Error setting data for Nest device %s %s (%s) with payload %s: %r",
