@@ -286,9 +286,20 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                     await asyncio.gather(*camera_property_tasks)
 
                 parsed_data = self.parser.parse_all(self._raw_data)
-                self.data = {
-                    **{device.serial_number: device for device in parsed_data.devices},
+                new_devices = {
+                    device.serial_number: device for device in parsed_data.devices
                 }
+
+                # If a new device was discovered during the update, reload the integration
+                if set(new_devices.keys()) - set(self.data.keys()):
+                    _LOGGER.info("New Nest device discovered. Reloading integration")
+                    self.hass.async_create_task(
+                        self.hass.config_entries.async_reload(
+                            self.config_entry.entry_id
+                        )
+                    )
+
+                self.data = new_devices
                 self.async_set_updated_data(self.data)
 
             except NotAuthenticatedException:
@@ -356,12 +367,23 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                             self._raw_data[resource_id][trait_label] = trait_data
 
                     parsed_data = self.parser.parse_all(self._raw_data)
-                    self.data = {
-                        **{
-                            device.serial_number: device
-                            for device in parsed_data.devices
-                        },
+                    new_devices = {
+                        device.serial_number: device for device in parsed_data.devices
                     }
+
+                    if self.first_protobuf_update_received.is_set() and set(
+                        new_devices.keys()
+                    ) - set(self.data.keys()):
+                        _LOGGER.info(
+                            "New Nest device discovered via Protobuf. Reloading integration"
+                        )
+                        self.hass.async_create_task(
+                            self.hass.config_entries.async_reload(
+                                self.config_entry.entry_id
+                            )
+                        )
+
+                    self.data = new_devices
                     self.async_set_updated_data(self.data)
 
                     # On first update, signal readiness and decide if we need to continue observing.
