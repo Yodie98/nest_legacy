@@ -49,7 +49,11 @@ class NestEntity(CoordinatorEntity[NestCoordinator], Generic[DeviceT]):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return super().available and self.device.online
+        return (
+            super().available
+            and self._device.serial_number in self.coordinator.data
+            and self.device.online
+        )
 
     def generate_device_info(self) -> DeviceInfo:
         """Generate the device info for the entity."""
