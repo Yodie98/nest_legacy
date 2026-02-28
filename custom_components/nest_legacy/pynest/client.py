@@ -1536,7 +1536,11 @@ class NestClient:
             setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
             if device.hvac_mode == ThermostatHvacMode.COOL:
                 setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-            elif device.hvac_mode == ThermostatHvacMode.RANGE:
+            elif (
+                device.hvac_mode == ThermostatHvacMode.RANGE
+                or "target_temperature_low" in data
+                or "target_temperature_high" in data
+            ):
                 setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
             target_temperature_settings_trait.targetTemperature.setpointType = (
                 setpoint_type
