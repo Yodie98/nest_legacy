@@ -1330,12 +1330,22 @@ class NestClient:
                 _LOGGER.debug("BatchUpdate response: %s", batch_update_resp)
                 if batch_update_resp.status.code != 0:
                     status_code = batch_update_resp.status.code
-                    msg = f"Command failed with code {status_code}: {batch_update_resp.status.message}"
+                    msg = f"Batch command failed with code {status_code}: {batch_update_resp.status.message}"
                     if status_code == 16:
                         raise NotAuthenticatedException(msg)
                     if status_code in _NON_RETRYABLE_CODES:
                         raise NonRetryablePynestException(msg)
                     raise PynestException(msg)
+
+                for resp in batch_update_resp.responses:
+                    if resp.status.code != 0:
+                        status_code = resp.status.code
+                        msg = f"Trait update failed with code {status_code}: {resp.status.message}"
+                        if status_code == 16:
+                            raise NotAuthenticatedException(msg)
+                        if status_code in _NON_RETRYABLE_CODES:
+                            raise NonRetryablePynestException(msg)
+                        raise PynestException(msg)
 
         for attempt in range(3):
             try:
