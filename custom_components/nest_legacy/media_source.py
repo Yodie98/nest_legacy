@@ -421,7 +421,7 @@ class NestMediaSource(MediaSource):
             start_time = event.get("start_time", 0)
             if start_time > 1e10:
                 start_time /= 1000
-            dt_object = datetime.datetime.fromtimestamp(start_time)
+            dt_object = dt_util.as_local(dt_util.utc_from_timestamp(start_time))
             display_type = ", ".join(event.get("types", [])).capitalize()
             title = f"{display_type} at {dt_object.strftime('%H:%M:%S')}"
 
