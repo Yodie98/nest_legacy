@@ -2016,24 +2016,27 @@ class NestClient:
             )
             return None
 
-    async def async_get_camera_event_clip(
+    @contextlib.asynccontextmanager
+    async def async_get_camera_event_media_stream(
         self,
         device: NestCamera,
         event_id: str,
         height: int | None = None,
         format: str = "mp4",
-    ) -> bytes | None:
-        """Get a historical clip from a camera event."""
+    ):
+        """Get a historical media stream from a camera event."""
         if device.is_protobuf:
             # Historical MP4 clips are not available over simple REST GET for Protobuf cameras
-            return None
+            yield None
+            return
 
         if not device.nexus_api_http_server_url:
             _LOGGER.error(
                 "Cannot get event clip for %s, nexus_api_http_server_url is missing",
                 device.object_key,
             )
-            return None
+            yield None
+            return
 
         camera_uuid = device.object_key.split(".")[1]
         params: dict[str, str | int] = {
@@ -2051,21 +2054,14 @@ class NestClient:
             url, params=params, headers=self._get_camera_headers()
         ) as response:
             if response.ok:
-                return await response.read()
-            _LOGGER.error(
-                "Failed to get camera event clip. Status: %s, URL: %s",
-                response.status,
-                response.url,
-            )
-            return None
-
-    async def async_get_camera_event_thumbnail(
-        self, device: NestCamera, event_id: str
-    ) -> bytes | None:
-        """Get a historical thumbnail from a camera event."""
-        return await self.async_get_camera_event_clip(
-            device, event_id, height=92, format="jpeg"
-        )
+                yield response
+            else:
+                _LOGGER.error(
+                    "Failed to get camera event clip. Status: %s, URL: %s",
+                    response.status,
+                    response.url,
+                )
+                yield None
 
     def _parse_protobuf_camera_event(
         self, cam_event: Any, EventTypeEnum: Any, events: list[dict[str, Any]]

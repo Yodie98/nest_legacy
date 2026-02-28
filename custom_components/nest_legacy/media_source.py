@@ -92,19 +92,27 @@ class NestEventClipView(NestEventMediaView):
         config_entry_id: str,
         serial_number: str,
         event_id: str,
-    ) -> web.Response:
+    ) -> web.StreamResponse:
         """Serve a Nest event clip."""
         entry, device = await self._handle_request(
             request, config_entry_id, serial_number
         )
         coordinator = entry.runtime_data
         try:
-            clip_bytes = await coordinator.client.async_get_camera_event_clip(
+            async with coordinator.client.async_get_camera_event_media_stream(
                 device, event_id, format="mp4"
-            )
-            if not clip_bytes:
-                raise web.HTTPNotFound
-            return web.Response(body=clip_bytes, content_type="video/mp4")
+            ) as response:
+                if not response:
+                    raise web.HTTPNotFound
+
+                stream = web.StreamResponse()
+                stream.content_type = "video/mp4"
+                await stream.prepare(request)
+
+                async for chunk in response.content.iter_chunked(4096):
+                    await stream.write(chunk)
+
+                return stream
         except PynestException as err:
             _LOGGER.error("Error fetching event media clip: %r", err)
             raise web.HTTPInternalServerError from err
@@ -129,12 +137,14 @@ class NestEventThumbnailView(NestEventMediaView):
         )
         coordinator = entry.runtime_data
         try:
-            image_bytes = await coordinator.client.async_get_camera_event_thumbnail(
-                device, event_id
-            )
-            if not image_bytes:
-                raise web.HTTPNotFound
-            return web.Response(body=image_bytes, content_type="image/jpeg")
+            async with coordinator.client.async_get_camera_event_media_stream(
+                device, event_id, height=92, format="jpeg"
+            ) as response:
+                if not response:
+                    raise web.HTTPNotFound
+
+                image_bytes = await response.read()
+                return web.Response(body=image_bytes, content_type="image/jpeg")
         except PynestException as err:
             _LOGGER.error("Error fetching event media thumbnail: %r", err)
             raise web.HTTPInternalServerError from err
