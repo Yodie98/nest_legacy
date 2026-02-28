@@ -1399,7 +1399,7 @@ class NestClient:
             )
             await self._async_update_trait_state(request)
 
-    async def _set_proto_thermostat_temperature(
+    async def _set_proto_thermostat_target_settings(
         self,
         device: NestThermostat,
         data: dict[str, Any],
@@ -1407,29 +1407,29 @@ class NestClient:
         current_traits: dict[str, Any] | None = None,
         is_eco: bool | None = None,
     ) -> None:
-        """Handle temperature updates for protobuf thermostat."""
-        # is_eco is passed explicitly from the caller to avoid reading stale
-        # device.is_eco_mode from the coordinator snapshot. The coordinator
-        # won't reflect the new state until the next observe push, so if the
-        # same payload also clears eco mode, device.is_eco_mode is still True
-        # here and would incorrectly route the temperature write to
-        # EcoModeSettingsTrait instead of TargetTemperatureSettingsTrait.
+        """Handle combined temperature and HVAC mode updates for protobuf thermostat."""
         if is_eco is None:
             is_eco = device.is_eco_mode
 
-        # Check if we are in Eco Mode. If so, we must update EcoModeSettingsTrait
-        if (
+        eco_mode_active = (
             device.hvac_mode
             in (ThermostatHvacMode.OFF, "eco", "ecoheat", "ecocool", "ecorange")
             or is_eco
+        )
+
+        update_eco = False
+        update_target = False
+
+        if eco_mode_active and (
+            "target_temperature" in data
+            or "target_temperature_low" in data
+            or "target_temperature_high" in data
         ):
-            # We are setting Eco temperatures
+            update_eco = True
             eco_mode_settings_trait = _get_trait_copy(
                 current_traits, nest_hvac_pb2.EcoModeSettingsTrait
             )
-
             target_val = data.get("target_temperature")
-
             if target_val is not None:
                 if eco_mode_settings_trait.ecoTemperatureHeat.enabled:
                     eco_mode_settings_trait.ecoTemperatureHeat.value.value = target_val
@@ -1451,182 +1451,143 @@ class NestClient:
                     "target_temperature_high"
                 ]
 
-            any_proto = google.protobuf.any_pb2.Any()
-            any_proto.Pack(
-                eco_mode_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+        # Fetch TargetTemperature trait once to avoid overwriting changes
+        target_temperature_settings_trait = _get_trait_copy(
+            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
+        )
+
+        if "hvac_mode" in data:
+            update_target = True
+            mode = data["hvac_mode"]
+            enabled = mode != ThermostatHvacMode.OFF
+            target_temperature_settings_trait.enabled.value = enabled
+            if enabled:
+                if mode == ThermostatHvacMode.HEAT:
+                    target_temperature_settings_trait.targetTemperature.setpointType = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+                elif mode == ThermostatHvacMode.COOL:
+                    target_temperature_settings_trait.targetTemperature.setpointType = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+                elif mode == ThermostatHvacMode.RANGE:
+                    target_temperature_settings_trait.targetTemperature.setpointType = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+
+        if not eco_mode_active and (
+            "target_temperature" in data
+            or "target_temperature_low" in data
+            or "target_temperature_high" in data
+        ):
+            update_target = True
+            heating_target = 20.0
+            cooling_target = 25.0
+            if target_temperature_settings_trait.HasField("targetTemperature"):
+                if target_temperature_settings_trait.targetTemperature.HasField(
+                    "heatingTarget"
+                ):
+                    heating_target = target_temperature_settings_trait.targetTemperature.heatingTarget.value
+                if target_temperature_settings_trait.targetTemperature.HasField(
+                    "coolingTarget"
+                ):
+                    cooling_target = target_temperature_settings_trait.targetTemperature.coolingTarget.value
+            else:
+                if device.target_temperature_low is not None:
+                    heating_target = device.target_temperature_low
+                elif (
+                    device.hvac_mode == ThermostatHvacMode.HEAT
+                    and device.target_temperature is not None
+                ):
+                    heating_target = device.target_temperature
+
+                if device.target_temperature_high is not None:
+                    cooling_target = device.target_temperature_high
+                elif (
+                    device.hvac_mode == ThermostatHvacMode.COOL
+                    and device.target_temperature is not None
+                ):
+                    cooling_target = device.target_temperature
+
+            temp_val = data.get("target_temperature")
+
+            # Derive setpointType safely, pulling from device fallback if cache is cold
+            if "hvac_mode" in data:
+                setpoint_type = (
+                    target_temperature_settings_trait.targetTemperature.setpointType
+                )
+            else:
+                setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+                if device.hvac_mode == ThermostatHvacMode.COOL:
+                    setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+                elif device.hvac_mode == ThermostatHvacMode.RANGE:
+                    setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+                target_temperature_settings_trait.targetTemperature.setpointType = (
+                    setpoint_type
+                )
+
+            if (
+                setpoint_type
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
+                and temp_val is not None
+            ):
+                heating_target = temp_val
+            elif (
+                setpoint_type
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
+                and temp_val is not None
+            ):
+                cooling_target = temp_val
+            elif (
+                setpoint_type
+                == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
+            ):
+                if "target_temperature_low" in data:
+                    heating_target = data["target_temperature_low"]
+                if "target_temperature_high" in data:
+                    cooling_target = data["target_temperature_high"]
+
+            target_temperature_settings_trait.targetTemperature.heatingTarget.value = (
+                heating_target
+            )
+            target_temperature_settings_trait.targetTemperature.coolingTarget.value = (
+                cooling_target
             )
 
-            req = v1_pb2.TraitUpdateStateRequest(
+        # Execute updates sequentially (but properly combined traits)
+        if update_eco:
+            any_proto_eco = google.protobuf.any_pb2.Any()
+            any_proto_eco.Pack(
+                eco_mode_settings_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX
+            )
+            req_eco = v1_pb2.TraitUpdateStateRequest(
                 traitRequest=v1_pb2.TraitRequest(
                     resourceId=device.object_key,
                     traitLabel="eco_mode_settings",
                     requestId=str(uuid.uuid4()),
                 ),
-                state=any_proto,
+                state=any_proto_eco,
             )
-            await self._async_update_trait_state(req)
-            return
+            await self._async_update_trait_state(req_eco)
 
-        # Standard HVAC Mode handling (non-Eco)
-        target_temperature_settings_trait = _get_trait_copy(
-            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
-        )
-
-        setpoint_type = (
-            nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-        )
-        if device.hvac_mode == ThermostatHvacMode.COOL:
-            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-        elif device.hvac_mode == ThermostatHvacMode.RANGE:
-            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
-
-        # Pre-fill heating/cooling targets from current state to avoid resetting un-updated values
-        # If cache is cold, fall back to parsed device properties rather than 0.0°C
-        heating_target = 20.0
-        cooling_target = 25.0
-
-        if target_temperature_settings_trait.HasField("targetTemperature"):
-            if target_temperature_settings_trait.targetTemperature.HasField(
-                "heatingTarget"
-            ):
-                heating_target = target_temperature_settings_trait.targetTemperature.heatingTarget.value
-            if target_temperature_settings_trait.targetTemperature.HasField(
-                "coolingTarget"
-            ):
-                cooling_target = target_temperature_settings_trait.targetTemperature.coolingTarget.value
-        else:
-            if device.target_temperature_low is not None:
-                heating_target = device.target_temperature_low
-            elif (
-                device.hvac_mode == ThermostatHvacMode.HEAT
-                and device.target_temperature is not None
-            ):
-                heating_target = device.target_temperature
-
-            if device.target_temperature_high is not None:
-                cooling_target = device.target_temperature_high
-            elif (
-                device.hvac_mode == ThermostatHvacMode.COOL
-                and device.target_temperature is not None
-            ):
-                cooling_target = device.target_temperature
-
-        temp_val = data.get("target_temperature")
-
-        if (
-            setpoint_type
-            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-        ):
-            if temp_val is not None:
-                heating_target = temp_val
-        elif (
-            setpoint_type
-            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-        ):
-            if temp_val is not None:
-                cooling_target = temp_val
-        elif (
-            setpoint_type
-            == nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
-        ):
-            val_low = data.get("target_temperature_low")
-            if val_low is not None:
-                heating_target = val_low
-
-            val_high = data.get("target_temperature_high")
-            if val_high is not None:
-                cooling_target = val_high
-
-        # Construct Actor Info
-        actor_info = nest_hvac_pb2.HvacActor.HvacActorStruct(
-            method=nest_hvac_pb2.HvacActor.HvacActorMethod.HVAC_ACTOR_METHOD_IOS,
-            originator=weave_common_pb2.ResourceId(resourceId=device.object_key),
-            timeOfAction=now,
-        )
-
-        target_temperature_settings_trait.targetTemperature.setpointType = setpoint_type
-        target_temperature_settings_trait.targetTemperature.heatingTarget.value = (
-            heating_target
-        )
-        target_temperature_settings_trait.targetTemperature.coolingTarget.value = (
-            cooling_target
-        )
-        target_temperature_settings_trait.targetTemperature.currentActorInfo.CopyFrom(
-            actor_info
-        )
-
-        any_proto = google.protobuf.any_pb2.Any()
-        any_proto.Pack(
-            target_temperature_settings_trait,
-            type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
-        )
-
-        req = v1_pb2.TraitUpdateStateRequest(
-            traitRequest=v1_pb2.TraitRequest(
-                resourceId=device.object_key,
-                traitLabel="target_temperature_settings",
-                requestId=str(uuid.uuid4()),
-            ),
-            state=any_proto,
-        )
-        await self._async_update_trait_state(req)
-
-    async def _set_proto_thermostat_hvac_mode(
-        self,
-        device: NestThermostat,
-        data: dict[str, Any],
-        now: Timestamp,
-        current_traits: dict[str, Any] | None = None,
-    ) -> None:
-        """Handle HVAC mode updates for protobuf thermostat."""
-        mode = data["hvac_mode"]
-        enabled = True
-        setpoint_type = (
-            nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-        )
-
-        if mode == ThermostatHvacMode.OFF:
-            enabled = False
-        elif mode == ThermostatHvacMode.HEAT:
-            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_HEAT
-        elif mode == ThermostatHvacMode.COOL:
-            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_COOL
-        elif mode == ThermostatHvacMode.RANGE:
-            setpoint_type = nest_hvac_pb2.SetPointScheduleSettingsTrait.SetPointType.SET_POINT_TYPE_RANGE
-
-        actor_info = nest_hvac_pb2.HvacActor.HvacActorStruct(
-            method=nest_hvac_pb2.HvacActor.HvacActorMethod.HVAC_ACTOR_METHOD_IOS,
-            originator=weave_common_pb2.ResourceId(resourceId=device.object_key),
-            timeOfAction=now,
-        )
-
-        target_temperature_settings_trait = _get_trait_copy(
-            current_traits, nest_hvac_pb2.TargetTemperatureSettingsTrait
-        )
-        target_temperature_settings_trait.enabled.value = enabled
-        if enabled:
-            target_temperature_settings_trait.targetTemperature.setpointType = (
-                setpoint_type
+        if update_target:
+            actor_info = nest_hvac_pb2.HvacActor.HvacActorStruct(
+                method=nest_hvac_pb2.HvacActor.HvacActorMethod.HVAC_ACTOR_METHOD_IOS,
+                originator=weave_common_pb2.ResourceId(resourceId=device.object_key),
+                timeOfAction=now,
             )
-        target_temperature_settings_trait.targetTemperature.currentActorInfo.CopyFrom(
-            actor_info
-        )
+            target_temperature_settings_trait.targetTemperature.currentActorInfo.CopyFrom(
+                actor_info
+            )
 
-        any_proto = google.protobuf.any_pb2.Any()
-        any_proto.Pack(
-            target_temperature_settings_trait,
-            type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
-        )
-
-        req = v1_pb2.TraitUpdateStateRequest(
-            traitRequest=v1_pb2.TraitRequest(
-                resourceId=device.object_key,
-                traitLabel="target_temperature_settings",
-                requestId=str(uuid.uuid4()),
-            ),
-            state=any_proto,
-        )
-        await self._async_update_trait_state(req)
+            any_proto_target = google.protobuf.any_pb2.Any()
+            any_proto_target.Pack(
+                target_temperature_settings_trait,
+                type_url_prefix=_NESTLABS_TYPE_URL_PREFIX,
+            )
+            req_target = v1_pb2.TraitUpdateStateRequest(
+                traitRequest=v1_pb2.TraitRequest(
+                    resourceId=device.object_key,
+                    traitLabel="target_temperature_settings",
+                    requestId=str(uuid.uuid4()),
+                ),
+                state=any_proto_target,
+            )
+            await self._async_update_trait_state(req_target)
 
     async def _set_proto_thermostat_fan(
         self,
@@ -1731,18 +1692,14 @@ class NestClient:
             )
             await self._async_send_command(device, cmd)
 
-        # Handle HVAC Mode
-        if "hvac_mode" in data:
-            await self._set_proto_thermostat_hvac_mode(
-                device, data, now, current_traits
-            )
-
+        # Handle HVAC Mode and Temperature together to prevent race condition overwriting trait states
         if (
-            "target_temperature" in data
+            "hvac_mode" in data
+            or "target_temperature" in data
             or "target_temperature_low" in data
             or "target_temperature_high" in data
         ):
-            await self._set_proto_thermostat_temperature(
+            await self._set_proto_thermostat_target_settings(
                 device, data, now, current_traits, is_eco=intended_is_eco
             )
 
