@@ -468,18 +468,24 @@ class NestParser:
         target_high = _round_temp(target_high, temp_scale)
 
         fan_timer_speed_str = data.get("fan_timer_speed", "stage0").replace("stage", "")
-        fan_timer_speed = (
-            int(fan_timer_speed_str)
-            if fan_timer_speed_str and fan_timer_speed_str != "none"
-            else 1
-        )
+        try:
+            fan_timer_speed = (
+                int(fan_timer_speed_str)
+                if fan_timer_speed_str and fan_timer_speed_str != "none"
+                else 1
+            )
+        except ValueError:
+            fan_timer_speed = 1
 
         fan_max_speed_str = data.get("fan_capabilities", "stage1").replace("stage", "")
-        fan_max_speed = (
-            int(fan_max_speed_str)
-            if fan_max_speed_str and fan_max_speed_str != "none"
-            else 1
-        )
+        try:
+            fan_max_speed = (
+                int(fan_max_speed_str)
+                if fan_max_speed_str and fan_max_speed_str != "none"
+                else 1
+            )
+        except ValueError:
+            fan_max_speed = 1
 
         batt_volts = data.get("battery_level")
 
