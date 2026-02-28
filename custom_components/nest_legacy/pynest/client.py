@@ -1900,16 +1900,27 @@ class NestClient:
         rcs_trait = _get_trait_copy(
             current_traits, nest_hvac_pb2.RemoteComfortSensingSettingsTrait
         )
+        RcsSourceType = nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType
 
         if active:
             # Switch to Single Sensor mode using this sensor ID
-            rcs_trait.activeRcsSelection.rcsSourceType = nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType.RCS_SOURCE_TYPE_SINGLE_SENSOR
+            rcs_trait.activeRcsSelection.rcsSourceType = (
+                RcsSourceType.RCS_SOURCE_TYPE_SINGLE_SENSOR
+            )
             rcs_trait.activeRcsSelection.activeRcsSensor.resourceId = device.object_key
-        else:
-            # Switch back to Backplate (Thermostat built-in sensor)
-            rcs_trait.activeRcsSelection.rcsSourceType = nest_hvac_pb2.RemoteComfortSensingSettingsTrait.RcsSourceType.RCS_SOURCE_TYPE_BACKPLATE
-            # Clear the active sensor field
+        elif (
+            rcs_trait.activeRcsSelection.rcsSourceType
+            == RcsSourceType.RCS_SOURCE_TYPE_SINGLE_SENSOR
+            and rcs_trait.activeRcsSelection.activeRcsSensor.resourceId
+            == device.object_key
+        ):
+            # Only switch back to backplate if THIS sensor is currently the active one
+            rcs_trait.activeRcsSelection.rcsSourceType = (
+                RcsSourceType.RCS_SOURCE_TYPE_BACKPLATE
+            )
             rcs_trait.activeRcsSelection.ClearField("activeRcsSensor")
+        else:
+            return  # No change needed
 
         any_proto = google.protobuf.any_pb2.Any()
         any_proto.Pack(rcs_trait, type_url_prefix=_NESTLABS_TYPE_URL_PREFIX)
