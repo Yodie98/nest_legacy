@@ -989,14 +989,13 @@ class NestClient:
             api_value = "0" if value else "1"
 
         camera_uuid = device.object_key.split(".")[1]
-        payload = f"uuid={camera_uuid}&{api_key}={api_value}"
+        payload = {"uuid": camera_uuid, api_key: api_value}
         url = f"https://webapi.{self._environment.camera_host}/api/dropcams.set_properties"
         _LOGGER.debug(
             "Setting camera property via URL %s with payload: %s", url, payload
         )
 
         headers = self._get_camera_headers()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         async def _do_post():
             async with self._session.post(
