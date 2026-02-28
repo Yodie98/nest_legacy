@@ -70,7 +70,9 @@ class NestEntity(CoordinatorEntity[NestCoordinator], Generic[DeviceT]):
         )
 
         if mac := self._device.mac_address:
-            device_info["connections"] = {(dr.CONNECTION_NETWORK_MAC, mac)}
+            device_info["connections"] = {
+                (dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))
+            }
 
         if hw_version := self._device.hardware_version:
             device_info["hw_version"] = hw_version
