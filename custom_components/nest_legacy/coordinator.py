@@ -14,6 +14,7 @@ from aiohttp import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -295,6 +296,21 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                     device.serial_number: device for device in parsed_data.devices
                 }
 
+                # Clean up stale devices
+                device_registry = dr.async_get(self.hass)
+                current_devices = dr.async_entries_for_config_entry(
+                    device_registry, self.config_entry.entry_id
+                )
+                for device_entry in current_devices:
+                    # Identifier is a tuple (DOMAIN, serial_number)
+                    serial_number = next(iter(device_entry.identifiers))[1]
+                    if serial_number not in new_devices:
+                        _LOGGER.debug("Removing stale device %s", serial_number)
+                        device_registry.async_update_device(
+                            device_id=device_entry.id,
+                            remove_config_entry_id=self.config_entry.entry_id,
+                        )
+
                 # If a new device was discovered during the update, reload the integration
                 if set(new_devices.keys()) - set(self.data.keys()):
                     _LOGGER.info("New Nest device discovered. Reloading integration")
@@ -396,6 +412,22 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                     new_devices = {
                         device.serial_number: device for device in parsed_data.devices
                     }
+
+                    # Clean up stale devices
+                    device_registry = dr.async_get(self.hass)
+                    current_devices = dr.async_entries_for_config_entry(
+                        device_registry, self.config_entry.entry_id
+                    )
+                    for device_entry in current_devices:
+                        serial_number = next(iter(device_entry.identifiers))[1]
+                        if serial_number not in new_devices:
+                            _LOGGER.debug(
+                                "Removing stale device %s via observer", serial_number
+                            )
+                            device_registry.async_update_device(
+                                device_id=device_entry.id,
+                                remove_config_entry_id=self.config_entry.entry_id,
+                            )
 
                     if self.first_protobuf_update_received.is_set() and set(
                         new_devices.keys()
