@@ -68,7 +68,6 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
             self._attr_operation_list = [
                 STATE_OFF,
                 MODE_SCHEDULE,
-                MODE_BOOST,
                 MODE_BOOST_30M,
                 MODE_BOOST_1H,
                 MODE_BOOST_2H,
