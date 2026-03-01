@@ -40,58 +40,58 @@
   "entity": {
     "binary_sensor": {
       "battery_health": {
-        "name": "Battery Health"
+        "name": "Battery health"
       },
       "buzzer_test": {
-        "name": "Buzzer Test"
+        "name": "Buzzer test"
       },
       "co_status": {
-        "name": "Carbon Monoxide"
+        "name": "Carbon monoxide"
       },
       "co_test": {
-        "name": "CO Test"
+        "name": "CO test"
       },
       "eco_mode": {
-        "name": "Eco Mode"
+        "name": "Eco mode"
       },
       "filter_replacement_needed": {
-        "name": "Filter Replacement Needed"
+        "name": "Filter replacement needed"
       },
       "heat_status": {
         "name": "Heat"
       },
       "humidity_test": {
-        "name": "Humidity Test"
+        "name": "Humidity test"
       },
       "led_test": {
-        "name": "LED Test"
+        "name": "LED test"
       },
       "line_power": {
-        "name": "Line Power"
+        "name": "Line power"
       },
       "occupancy": {
         "name": "Occupancy"
       },
       "pir_test": {
-        "name": "PIR Test"
+        "name": "PIR test"
       },
       "removed_from_base": {
-        "name": "Removed from Base"
+        "name": "Removed from base"
       },
       "smoke_status": {
         "name": "Smoke"
       },
       "smoke_test": {
-        "name": "Smoke Test"
+        "name": "Smoke test"
       },
       "speaker_test": {
-        "name": "Speaker Test"
+        "name": "Speaker test"
       },
       "tamper": {
         "name": "Tamper"
       },
       "wifi_test": {
-        "name": "WiFi Test"
+        "name": "WiFi test"
       }
     },
     "event": {
@@ -133,7 +133,7 @@
     },
     "number": {
       "auto_relock_duration": {
-        "name": "Auto-Relock Duration"
+        "name": "Auto-relock duration"
       }
     },
     "select": {
@@ -147,7 +147,7 @@
         }
       },
       "night_light_brightness": {
-        "name": "Night Light Brightness",
+        "name": "Night light brightness",
         "state": {
           "high": "High",
           "low": "Low",
@@ -157,48 +157,48 @@
     },
     "sensor": {
       "backplate_temperature": {
-        "name": "Backplate Temperature"
+        "name": "Backplate temperature"
       },
       "battery_level": {
-        "name": "Battery Level"
+        "name": "Battery level"
       },
       "battery_voltage": {
-        "name": "Battery Voltage"
+        "name": "Battery voltage"
       },
       "fan_duration_config": {
-        "name": "Fan Duration Configuration"
+        "name": "Fan duration configuration"
       },
       "fan_timer_timeout": {
-        "name": "Fan Timer Timeout"
+        "name": "Fan timer timeout"
       },
       "filter_runtime": {
-        "name": "Filter Runtime"
+        "name": "Filter runtime"
       },
       "humidity": {
         "name": "Humidity"
       },
       "last_action": {
-        "name": "Last Action",
+        "name": "Last action",
         "state": {
           "implicit": "Automatic",
           "keypad": "Keypad",
           "physical": "Physical",
           "remote": "Remote",
           "unknown": "Unknown",
-          "voice": "Voice Assistant"
+          "voice": "Voice assistant"
         }
       },
       "last_audio_self_test": {
-        "name": "Last Audio Self Test"
+        "name": "Last audio self test"
       },
       "last_manual_test": {
-        "name": "Last Manual Test"
+        "name": "Last manual test"
       },
       "replace_by": {
-        "name": "Replace By"
+        "name": "Replace by"
       },
       "target_humidity": {
-        "name": "Target Humidity"
+        "name": "Target humidity"
       },
       "temperature": {
         "name": "Temperature"
@@ -206,13 +206,13 @@
     },
     "switch": {
       "active_sensor": {
-        "name": "Control Thermostat"
+        "name": "Control thermostat"
       },
       "audio": {
         "name": "Audio"
       },
       "auto_relock": {
-        "name": "Auto-Relock"
+        "name": "Auto-relock"
       },
       "camera_streaming": {
         "name": "Streaming"
@@ -221,22 +221,22 @@
         "name": "Dehumidifier"
       },
       "heads_up": {
-        "name": "Heads-Up"
+        "name": "Heads-up"
       },
       "humidifier": {
         "name": "Humidifier"
       },
       "image_rotation": {
-        "name": "Image Rotation"
+        "name": "Image rotation"
       },
       "indoor_chime": {
-        "name": "Indoor Chime"
+        "name": "Indoor chime"
       },
       "night_vision": {
-        "name": "Night Vision"
+        "name": "Night vision"
       },
       "nightly_promise": {
-        "name": "Nightly Promise"
+        "name": "Nightly promise"
       },
       "pathlight": {
         "name": "Pathlight"
@@ -245,13 +245,13 @@
         "name": "Status LED"
       },
       "steam_check": {
-        "name": "Steam Check"
+        "name": "Steam check"
       },
       "temperature_lock": {
-        "name": "Temperature Lock"
+        "name": "Temperature lock"
       },
       "visitor_announcements": {
-        "name": "Visitor Announcements"
+        "name": "Visitor announcements"
       }
     },
     "water_heater": {
@@ -271,12 +271,12 @@
     "step": {
       "user": {
         "data": {
-          "enable_protobuf_camera": "Enable Protobuf for Cameras (Recommended for Google accounts)",
-          "enable_protobuf_lock": "Enable Protobuf for Locks (Recommended)",
-          "enable_protobuf_protect": "Enable Protobuf for Protects (Experimental)",
-          "enable_protobuf_structure": "Enable Protobuf for Structure (Experimental)",
-          "enable_protobuf_thermostat": "Enable Protobuf for Thermostats (Recommended)",
-          "event_poll_interval": "Camera Event Poll Interval (seconds)"
+          "enable_protobuf_camera": "Enable Protobuf for cameras (recommended for Google accounts)",
+          "enable_protobuf_lock": "Enable Protobuf for locks (recommended)",
+          "enable_protobuf_protect": "Enable Protobuf for Protects (experimental)",
+          "enable_protobuf_structure": "Enable Protobuf for structure (experimental)",
+          "enable_protobuf_thermostat": "Enable Protobuf for thermostats (recommended)",
+          "event_poll_interval": "Camera event poll interval (seconds)"
         }
       }
     }
