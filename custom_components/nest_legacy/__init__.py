@@ -50,7 +50,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: NestConfigEntry) -> bool
             coordinator.first_protobuf_update_received.wait(), timeout=15
         )
     except TimeoutError as err:
-        raise ConfigEntryNotReady(f"Failed to initialize Nest: {err}") from err
+        raise ConfigEntryNotReady(
+            "Timed out waiting for initial Protobuf data from Nest"
+        ) from err
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
