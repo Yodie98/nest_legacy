@@ -96,6 +96,8 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         self._last_event_poll_success_time: float | None = None
         self.first_protobuf_update_received = asyncio.Event()
         self._auth_lock = asyncio.Lock()
+        self._subscriber_unavailable_logged = False
+        self._observer_unavailable_logged = False
 
     def get_raw_data_for_diagnostics(self) -> dict[str, Any]:
         """Return raw data, useful for diagnostics."""
@@ -148,7 +150,6 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
         except BadCredentialsException as err:
             raise ConfigEntryAuthFailed from err
         except (ClientError, TimeoutError, PynestException) as err:
-            _LOGGER.error("Error communicating with Nest API: %r", err)
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
     async def async_set_device_data(
@@ -182,7 +183,7 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 await self.client.async_set_device_data(
                     device, data, current_traits=current_traits
                 )
-            except Exception as err:
+            except (ClientError, TimeoutError, PynestException) as err:
                 raise HomeAssistantError(
                     "Retry failed after re-authentication"
                 ) from err
@@ -256,6 +257,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 if not updates:
                     continue
 
+                if self._subscriber_unavailable_logged:
+                    _LOGGER.info("Nest subscriber connection restored")
+                    self._subscriber_unavailable_logged = False
+
                 camera_property_tasks = []
                 for key, value in updates.items():
                     old_value = self._raw_data.get(key)
@@ -323,12 +328,29 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 )
                 failures += 1
                 if isinstance(err, (ClientError, PynestException)):
-                    _LOGGER.warning(
-                        "Subscriber connection error: %r. Retrying in %ds", err, delay
-                    )
-                else:
+                    if not self._subscriber_unavailable_logged:
+                        _LOGGER.warning(
+                            "Subscriber connection error: %r. Retrying in %ds",
+                            err,
+                            delay,
+                        )
+                        self._subscriber_unavailable_logged = True
+                    else:
+                        _LOGGER.debug(
+                            "Subscriber connection error: %r. Retrying in %ds",
+                            err,
+                            delay,
+                        )
+                elif not self._subscriber_unavailable_logged:
                     _LOGGER.exception(
                         "Unknown exception in subscriber. Retrying in %ds", delay
+                    )
+                    self._subscriber_unavailable_logged = True
+                else:
+                    _LOGGER.debug(
+                        "Unknown exception in subscriber: %r. Retrying in %ds",
+                        err,
+                        delay,
                     )
                 await asyncio.sleep(delay)
                 continue
@@ -346,6 +368,10 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
 
                 async for updates in self.client.async_observe_for_updates():
                     failures = 0  # Reset on success
+
+                    if self._observer_unavailable_logged:
+                        _LOGGER.info("Nest observer connection restored")
+                        self._observer_unavailable_logged = False
 
                     # Deep merge protobuf updates into raw_data
                     for resource_id, traits in updates.items():
@@ -417,12 +443,25 @@ class NestCoordinator(DataUpdateCoordinator[dict[str, NestDevice]]):
                 )
                 failures += 1
                 if isinstance(err, (ClientError, TimeoutError, PynestException)):
-                    _LOGGER.warning(
-                        "Observer connection error: %r. Retrying in %ds", err, delay
-                    )
-                else:
+                    if not self._observer_unavailable_logged:
+                        _LOGGER.warning(
+                            "Observer connection error: %r. Retrying in %ds", err, delay
+                        )
+                        self._observer_unavailable_logged = True
+                    else:
+                        _LOGGER.debug(
+                            "Observer connection error: %r. Retrying in %ds", err, delay
+                        )
+                elif not self._observer_unavailable_logged:
                     _LOGGER.exception(
                         "Unknown exception in observer. Retrying in %ds", delay
+                    )
+                    self._observer_unavailable_logged = True
+                else:
+                    _LOGGER.debug(
+                        "Unknown exception in observer: %r. Retrying in %ds",
+                        err,
+                        delay,
                     )
                 await asyncio.sleep(delay)
                 continue
