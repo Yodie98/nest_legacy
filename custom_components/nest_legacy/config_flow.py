@@ -45,7 +45,9 @@ class NestConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 1
 
-    _options: dict[str, Any] = {}
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._options: dict[str, Any] = {}
 
     async def _validate_input(self, user_input: dict[str, Any]) -> dict[str, Any]:
         """Validate user credentials."""
