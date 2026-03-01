@@ -1316,27 +1316,24 @@ class NestParser:
             else None
         )
 
-        # Dehumidifier / Humidity Control
+        # Dehumidifier / Humidifier / Humidity Control
         humid_ctrl_trait: nest_hvac_pb2.HumidityControlSettingsTrait | None = (
             traits.get(nest_hvac_pb2.HumidityControlSettingsTrait.DESCRIPTOR.full_name)
         )
         dehumidifier_state = False
+        humidifier_state = False
         target_humidity = None
         if humid_ctrl_trait:
             if humid_ctrl_trait.HasField("dehumidifierTargetHumidity"):
                 dehumidifier_state = humid_ctrl_trait.dehumidifierTargetHumidity.enabled
                 target_humidity = humid_ctrl_trait.dehumidifierTargetHumidity.value
+            if humid_ctrl_trait.HasField("humidifierTargetHumidity"):
+                humidifier_state = humid_ctrl_trait.humidifierTargetHumidity.enabled
+                target_humidity = humid_ctrl_trait.humidifierTargetHumidity.value
 
             # Prefer standard targetHumidity if available
             if humid_ctrl_trait.HasField("targetHumidity"):
                 target_humidity = humid_ctrl_trait.targetHumidity.value
-
-        # Humidifier State
-        humidifier_state = False
-        if hvac_trait.HasField("hvacState"):
-            humidifier_state = hvac_trait.hvacState.humidifierActive
-            if hvac_trait.hvacState.dehumidifierActive:
-                dehumidifier_state = True
 
         # Fan (using helper)
         (
