@@ -244,6 +244,4 @@ class NestSwitch(NestEntity[NestDevice], SwitchEntity):
     async def _set_state(self, state: bool) -> None:
         """Set the state of the switch."""
         key = self.entity_description.key
-
-        value = state
-        await self._set_device_data({key: value})
+        await self._set_device_data({key: state})
