@@ -166,13 +166,6 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
     ),
     # Wired specific
     NestBinarySensorEntityDescription(
-        key="occupancy",
-        translation_key="occupancy",
-        device_class=BinarySensorDeviceClass.OCCUPANCY,
-        value_fn=lambda device: device.occupancy,
-        device_types=(NestWiredProtect,),
-    ),
-    NestBinarySensorEntityDescription(
         key="line_power_present",
         translation_key="line_power",
         device_class=BinarySensorDeviceClass.POWER,
@@ -180,14 +173,17 @@ _DESCRIPTIONS: tuple[NestBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.line_power_present,
         device_types=(NestWiredProtect,),
     ),
-    # Thermostat sensors
     NestBinarySensorEntityDescription(
         key="occupancy",
         translation_key="occupancy",
         device_class=BinarySensorDeviceClass.OCCUPANCY,
         value_fn=lambda device: device.occupancy,
-        device_types=(NestThermostat,),
+        device_types=(
+            NestWiredProtect,
+            NestThermostat,
+        ),
     ),
+    # Thermostat sensors
     NestBinarySensorEntityDescription(
         key="leaf",
         translation_key="eco_mode",
