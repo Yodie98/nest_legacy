@@ -5,16 +5,19 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from aiohttp import ClientError
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.message import Message
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import CONF_COOKIES, CONF_ISSUE_TOKEN
 from .coordinator import NestConfigEntry
+from .pynest.exceptions import PynestException
 from .pynest.models import NestDevice, NestHeatLink
 
 TO_REDACT = [
@@ -79,7 +82,7 @@ async def async_get_config_entry_diagnostics(
     try:
         if coordinator.client.is_expired():
             await coordinator.async_reauthenticate()
-    except Exception as e:  # noqa: BLE001
+    except (ClientError, TimeoutError, PynestException, HomeAssistantError) as e:
         return {"error": f"Authentication failed during diagnostics: {e}"}
 
     processed_data = {
