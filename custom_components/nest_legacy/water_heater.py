@@ -13,6 +13,7 @@ from homeassistant.components.water_heater import (
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .coordinator import NestConfigEntry, NestCoordinator
 from .entity import NestEntity
@@ -91,7 +92,7 @@ class NestHeatLinkWaterHeater(NestEntity[NestHeatLink], WaterHeaterEntity):
     def current_operation(self) -> str | None:
         """Return current operation."""
         # Calculate remaining boost time
-        current_time = datetime.datetime.now(datetime.UTC).timestamp()
+        current_time = dt_util.utcnow().timestamp()
         end_time = self.device.hot_water_boost_time_to_end
 
         # If the API returns 0 or a past time, boost is off

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 from homeassistant.util.percentage import (
     percentage_to_ranged_value,
     ranged_value_to_percentage,
@@ -102,7 +102,11 @@ class NestThermostatFan(NestEntity[NestThermostat], FanEntity):
 
     async def _set_fan_state(self, fan_on: bool, speed: int | None = None) -> None:
         """Set the fan state."""
-        timeout = int(time.time()) + self.device.fan_duration if fan_on else 0
+        timeout = (
+            int(dt_util.utcnow().timestamp()) + self.device.fan_duration
+            if fan_on
+            else 0
+        )
         payload: dict[str, Any] = {"fan_timer_timeout": timeout}
         if fan_on and speed is not None:
             payload["fan_timer_speed"] = f"stage{speed}"
