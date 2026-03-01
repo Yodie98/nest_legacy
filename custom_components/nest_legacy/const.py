@@ -1,4 +1,4 @@
-"""Constants for the Nest integration."""
+"""Constants for the Nest Legacy integration."""
 
 from __future__ import annotations
 

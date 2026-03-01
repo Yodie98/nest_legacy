@@ -1,4 +1,4 @@
-"""Data update coordinator for the Nest integration."""
+"""Data update coordinator for the Nest Legacy integration."""
 
 from __future__ import annotations
 
