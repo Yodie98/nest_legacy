@@ -2,7 +2,7 @@
 
 ![Nest Legacy Header](https://brands.home-assistant.io/nest/logo.png)
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 
 This is a custom component for Home Assistant to integrate a wide range of Nest devices using an unofficial web API (combining REST streaming and Protobuf). It serves as an alternative to the official Nest integration, providing support for devices not available through Google's official Smart Device Management (SDM) API, such as the Nest Protect, Nest x Yale Lock, and Nest Heat Link.
 
@@ -104,11 +104,12 @@ This integration creates a rich set of entities for your Nest devices based on t
 
 ### HACS
 
+This integration is included in the default HACS repository. 
+
 1. Open HACS in Home Assistant.
-2. Add a custom integration repository: `https://github.com/tronikos/nest_legacy`
-3. Select "Nest Legacy" in the Integration tab and click download.
-4. Restart Home Assistant.
-5. Go to Settings > Devices & Services > Add Integration > Search for "Nest Legacy".
+2. Search for "Nest Legacy" in the Integrations section and click download.
+3. Restart Home Assistant.
+4. Go to Settings > Devices & Services > Add Integration > Search for "Nest Legacy".
 
 ## Configuration
 
