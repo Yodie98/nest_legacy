@@ -2385,10 +2385,11 @@ class NestClient:
             trait_label = state.traitId.traitLabel
 
             _LOGGER.debug(
-                "OBSERVE TRAIT MAPPING: resource_id=%s, type_url=%s, trait_label='%s'",
+                "OBSERVE TRAIT MAPPING: resource_id=%s, type_url=%s, trait_label='%s', state_types=%s",
                 resource_id,
                 type_url,
                 trait_label,
+                [v2_pb2.StateType.Name(t) for t in state.stateTypes],
             )
 
             if trait_label.endswith("_bucketized"):
@@ -2409,7 +2410,7 @@ class NestClient:
                 and trait_label in _LABEL_SPECIFIC_TRAITS
                 and not (
                     trait_label in updates[resource_id]
-                    and state.stateTypes != v2_pb2.ACCEPTED
+                    and v2_pb2.ACCEPTED not in state.stateTypes
                 )
             ):
                 updates[resource_id][trait_label] = unpacked_message
@@ -2419,7 +2420,7 @@ class NestClient:
             # and the current update is NOT ACCEPTED, ignore it.
             if (
                 descriptor_full_name in updates[resource_id]
-                and state.stateTypes != v2_pb2.ACCEPTED
+                and v2_pb2.ACCEPTED not in state.stateTypes
             ):
                 continue
 
