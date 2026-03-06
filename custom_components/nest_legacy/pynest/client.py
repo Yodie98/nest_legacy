@@ -1346,15 +1346,16 @@ class NestClient:
                         raise NonRetryablePynestException(msg)
                     raise PynestException(msg)
 
-                for resp in batch_update_resp.responses:
-                    if resp.status.code != 0:
-                        status_code = resp.status.code
-                        msg = f"Trait update failed with code {status_code}: {resp.status.message}"
-                        if status_code == 16:
-                            raise NotAuthenticatedException(msg)
-                        if status_code in _NON_RETRYABLE_CODES:
-                            raise NonRetryablePynestException(msg)
-                        raise PynestException(msg)
+                for resp in batch_update_resp.batchUpdateStateResponse:
+                    for op in resp.traitOperations:
+                        if op.status.code != 0:
+                            status_code = op.status.code
+                            msg = f"Trait update failed with code {status_code}: {op.status.message}"
+                            if status_code == 16:
+                                raise NotAuthenticatedException(msg)
+                            if status_code in _NON_RETRYABLE_CODES:
+                                raise NonRetryablePynestException(msg)
+                            raise PynestException(msg)
 
         for attempt in range(3):
             try:
