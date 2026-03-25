@@ -1,8 +1,10 @@
-"""Generate protobuf files for pynest."""
-# pip install grpcio-tools mypy-protobuf
-# python generate_protos.py
-# # To delete untracked files:
-# git clean -fdi
+"""Generate protobuf files for pynest.
+
+pip install grpcio-tools mypy-protobuf
+python generate_protos.py
+# To delete untracked files:
+git clean -fdi
+"""
 
 from functools import partial
 import logging
@@ -62,6 +64,9 @@ def generate_protos() -> None:
 
     # Automatically transform absolute imports to relative imports
     fix_imports(output_dir)
+
+    # Remove runtime version validation for compatibility with older protobuf versions
+    fix_runtime_version(output_dir)
 
 
 def _get_from_replacement(match: re.Match, dots: str, output_dir: Path) -> str:
@@ -146,6 +151,31 @@ def fix_imports(output_dir: Path) -> None:
                     new_content = new_content.replace("\r\n", "\n")
                     with open(file_path, "w", encoding="utf-8", newline="\n") as f:
                         f.write(new_content)
+
+
+def fix_runtime_version(output_dir: Path) -> None:
+    """Remove protobuf runtime version validation from generated files."""
+    import_re = re.compile(
+        r"^from google\.protobuf import runtime_version as _runtime_version\n",
+        re.MULTILINE,
+    )
+    validate_re = re.compile(
+        r"_runtime_version\.ValidateProtobufRuntimeVersion\(\s*[^)]*\)\n",
+        re.DOTALL,
+    )
+
+    for file_path in output_dir.rglob("*_pb2.py"):
+        content = file_path.read_text(encoding="utf-8")
+
+        if "runtime_version" not in content:
+            continue
+
+        new_content = import_re.sub("", content)
+        new_content = validate_re.sub("", new_content)
+
+        if new_content != content:
+            file_path.write_text(new_content, encoding="utf-8")
+            _LOGGER.info("Removed runtime version validation from %s", file_path.name)
 
 
 if __name__ == "__main__":
