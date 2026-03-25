@@ -1,4 +1,8 @@
 """Generate protobuf files for pynest."""
+# pip install grpcio-tools mypy-protobuf
+# python generate_protos.py
+# # To delete untracked files:
+# git clean -fdi
 
 from functools import partial
 import logging
@@ -35,7 +39,7 @@ def generate_protos() -> None:
         "grpc_tools.protoc",
         f"-I{proto_dir}",
         f"--python_out={output_dir}",
-        f"--pyi_out={output_dir}",
+        f"--mypy_out={output_dir}",
     ]
 
     # Add all proto files to the command
