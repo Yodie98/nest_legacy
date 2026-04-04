@@ -100,6 +100,42 @@ This integration creates a rich set of entities for your Nest devices based on t
 ### Structure (Home)
 - **Select:** Set the structure mode (Home, Away, Sleep, Vacation).
 
+## Custom Actions
+
+This integration provides several custom actions for advanced functionality, especially for managing guest access on Nest x Yale Locks.
+
+### `nest_legacy.list_guests`
+Lists all guests configured on your Nest structures. This action returns a list of guests, which can be viewed in the Home Assistant trace or used in scripts with [response data](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data).
+
+- **Data:**
+  - `config_entry_id` (Optional): The config entry of the Nest Legacy integration. Required if you have multiple Nest Legacy entries.
+
+### `nest_legacy.get_user_schedule`
+Gets the access schedule for a specific user on a lock. This action returns the schedule details.
+
+- **Data:**
+  - `device_id` (Required): The lock device to target.
+  - `user_id` (Required): The user or guest resource ID (e.g., `GUEST_1234`).
+
+### `nest_legacy.set_user_schedule`
+Sets the access schedule for a user on a lock.
+
+- **Data:**
+  - `device_id` (Required): The lock device to target.
+  - `user_id` (Required): The user or guest resource ID (e.g., `GUEST_1234`).
+  - `days_of_week` (Optional): The days of the week when access is allowed (e.g., `monday`, `tuesday`).
+  - `start_time` (Optional): The time of day when access starts (e.g., `14:00:00`).
+  - `duration` (Optional): The length of the daily access window (e.g., `04:00:00`).
+  - `start_timebox` (Optional): The date and time when access begins.
+  - `end_timebox` (Optional): The date and time when access expires.
+
+### `nest_legacy.delete_user_schedule`
+Deletes the access schedule for a user on a device.
+
+- **Data:**
+  - `device_id` (Required): The lock device to target.
+  - `user_id` (Required): The user or guest resource ID (e.g., `GUEST_1234`).
+
 ## Installation
 
 ### HACS
