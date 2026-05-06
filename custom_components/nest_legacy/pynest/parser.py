@@ -57,7 +57,7 @@ from .protobuf_gen.weave.trait import (
 
 
 def _safe_to_seconds(
-    ts: "timestamp_pb2.Timestamp | duration_pb2.Duration",
+    ts: timestamp_pb2.Timestamp | duration_pb2.Duration,
     default: int = 0,
 ) -> int:
     """Safely convert a protobuf Timestamp or Duration to seconds.
@@ -1218,8 +1218,8 @@ class NestParser:
 
         if hw_settings_trait:
             if hw_settings_trait.HasField("boostTimerEnd"):
-                hot_water_boost_time_to_end = (
-                    _safe_to_seconds(hw_settings_trait.boostTimerEnd)
+                hot_water_boost_time_to_end = _safe_to_seconds(
+                    hw_settings_trait.boostTimerEnd
                 )
             if hw_settings_trait.HasField("temperature"):
                 hot_water_temperature = _round_temp(
@@ -2215,7 +2215,9 @@ class NestParser:
         )
 
         if beacon_trait and beacon_trait.HasField("lastBeaconTime"):
-            online = (time.time() - _safe_to_seconds(beacon_trait.lastBeaconTime)) < 3600 * 4
+            online = (
+                time.time() - _safe_to_seconds(beacon_trait.lastBeaconTime)
+            ) < 3600 * 4
         elif liveness_trait:
             online = (
                 liveness_trait.status
