@@ -46,6 +46,7 @@ This integration supports a wide variety of Nest devices:
 This integration creates a rich set of entities for your Nest devices based on their capabilities.
 
 ### Nest Thermostat
+
 - **Climate:** Full control over temperature, HVAC modes (Heat, Cool, Heat/Cool, Off), and Presets (None, Eco). Supports Target Humidity if a humidifier/dehumidifier is present.
 - **Fan:** Independent control of the fan (On/Off, Speed/Percentage).
 - **Sensors:** Current Temperature, Target Temperature, Humidity, Target Humidity, Backplate Temperature, Filter Runtime.
@@ -53,10 +54,12 @@ This integration creates a rich set of entities for your Nest devices based on t
 - **Switches:** Temperature Lock, Dehumidifier State.
 
 ### Nest Temperature Sensor
+
 - **Sensors:** Current Temperature, Battery Level.
 - **Switch:** **Control Thermostat** (Active Sensor). Turning this switch on forces the associated thermostat to use this sensor's reading for climate control.
 
 ### Nest Protect
+
 - **Binary Sensors:** Smoke Status, CO Status, Heat Status.
 - **Diagnostic Binary Sensors:** Battery Health, Line Power (wired only), Occupancy (wired only), Removed from Base status.
 - **Component Tests:** Sensors indicating pass/fail for Speaker, Smoke, CO, WiFi, LED, PIR, Buzzer, and Humidity sensors.
@@ -65,12 +68,14 @@ This integration creates a rich set of entities for your Nest devices based on t
 - **Select:** Night Light Brightness (Low, Medium, High).
 
 ### Nest Cameras & Doorbells
+
 - **Camera:** Live streaming entity.
 - **Switches:** Streaming Enabled, Audio Recording, Indoor Chime (Doorbell), Visitor Announcements (Doorbell), Night Vision (IR), Status LED, Video Rotation.
 - **Events:** `event` entities that trigger on Motion, Person, Sound, Face Detection, and Doorbell Chime.
 - **Media Browser:** Browse, play, and see thumbnails for historical camera events directly in the Home Assistant Media Browser.
 
 ### Nest x Yale Lock
+
 - **Lock:** Lock and unlock control.
 - **Sensors:** Battery Level, Last Actor (who locked/unlocked: Keypad, Manual, Remote, Voice, etc.).
 - **Binary Sensor:** Tamper detection.
@@ -78,6 +83,7 @@ This integration creates a rich set of entities for your Nest devices based on t
 - **Number:** Configure the Auto-Relock duration (seconds).
 
 ### Nest Heat Link (Europe)
+
 - **Water Heater:** Control hot water heating.
 - **Operation Modes:** Supports `off`, `schedule`, and several boost durations (`boost`, `boost_30m`, `boost_1h`, `boost_2h`).
 - **Boost Mode:** Activates hot water for a specified duration (default 30 minutes for `boost`). The reported operation mode will dynamically update to reflect the remaining boost time (e.g., switching from `Boost (2h)` to `Boost (1h)` as time passes). Once the boost timer expires, the device automatically reverts to the previous mode (e.g., `schedule`).
@@ -98,6 +104,7 @@ This integration creates a rich set of entities for your Nest devices based on t
   ```
 
 ### Structure (Home)
+
 - **Select:** Set the structure mode (Home, Away, Sleep, Vacation).
 
 ## Custom Actions
@@ -105,12 +112,14 @@ This integration creates a rich set of entities for your Nest devices based on t
 This integration provides several custom actions for advanced functionality, especially for managing guest access on Nest x Yale Locks.
 
 ### `nest_legacy.list_guests`
+
 Lists all guests configured on your Nest structures. This action returns a list of guests, which can be viewed in the Home Assistant trace or used in scripts with [response data](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data).
 
 - **Data:**
   - `config_entry_id` (Optional): The config entry of the Nest Legacy integration. Required if you have multiple Nest Legacy entries.
 
 ### `nest_legacy.get_user_schedule`
+
 Gets the access schedule for a specific user on a lock. This action returns the schedule details.
 
 - **Data:**
@@ -118,6 +127,7 @@ Gets the access schedule for a specific user on a lock. This action returns the 
   - `user_id` (Required): The user or guest resource ID (e.g., `GUEST_1234`).
 
 ### `nest_legacy.set_user_schedule`
+
 Sets the access schedule for a user on a lock.
 
 - **Data:**
@@ -130,6 +140,7 @@ Sets the access schedule for a user on a lock.
   - `end_timebox` (Optional): The date and time when access expires.
 
 ### `nest_legacy.delete_user_schedule`
+
 Deletes the access schedule for a user on a device.
 
 - **Data:**
@@ -140,7 +151,7 @@ Deletes the access schedule for a user on a device.
 
 ### HACS
 
-This integration is included in the default HACS repository. 
+This integration is included in the default HACS repository.
 
 1. Open HACS in Home Assistant.
 2. Search for "Nest Legacy" in the Integrations section and click download.
@@ -196,13 +207,13 @@ If you are part of the Google Field Test program, check the "Use Field Test envi
 
 Once set up, you can click "Configure" on the integration entry to tweak settings:
 
-*   **Camera Event Poll Interval:** How often to check for new camera events (default: 5 seconds).
-*   **Protobuf Options:** Enable/Disable the use of the newer Protobuf API for specific device types (Locks, Thermostats, Protects, Structure, Cameras).
+- **Camera Event Poll Interval:** How often to check for new camera events (default: 5 seconds).
+- **Protobuf Options:** Enable/Disable the use of the newer Protobuf API for specific device types (Locks, Thermostats, Protects, Structure, Cameras).
 
 ## Troubleshooting
 
-*   **Authentication Errors:** If you receive authentication errors, your cookies or tokens may have expired. You will need to re-fetch them using the steps above and use the "Reconfigure" option in the integration.
-*   **Missing Devices:** Ensure your devices are visible in the Nest app. Some newer Google Nest devices (like the 2021+ battery cameras) are exclusively on the Google Home app and may not appear here, or may have limited functionality via the legacy API.
+- **Authentication Errors:** If you receive authentication errors, your cookies or tokens may have expired. You will need to re-fetch them using the steps above and use the "Reconfigure" option in the integration.
+- **Missing Devices:** Ensure your devices are visible in the Nest app. Some newer Google Nest devices (like the 2021+ battery cameras) are exclusively on the Google Home app and may not appear here, or may have limited functionality via the legacy API.
 
 ## Credits
 
