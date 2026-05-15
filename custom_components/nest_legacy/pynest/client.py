@@ -576,6 +576,7 @@ class NestClient:
                 {
                     BucketType.DEVICE,
                     BucketType.SHARED,
+                    BucketType.KRYPTONITE,
                     BucketType.LINK,
                     BucketType.TRACK,
                     BucketType.RCS_SETTINGS,
